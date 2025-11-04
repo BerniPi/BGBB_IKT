@@ -24,6 +24,9 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentRoomId = null; // ID des aktuell gewählten Raums
   let debounceTimer = null; // Timer für die Debounce-Funktion
 
+  // NEU: Globale Sortiervariablen
+let __sort = { col: "category_name", dir: "asc" };
+
   // --- DOM Elements ---
   const floorSelect = document.getElementById("walkthrough-floor-select");
   const roomSelect = document.getElementById("walkthrough-room-select");
@@ -62,6 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     bindEvents();
+    bindSortEvents();
 
     // === NEU: Standard-Stockwerk "0" auswählen ===
     const defaultFloor = "0"; // Stockwerk "0" als String
@@ -215,6 +219,57 @@ document.addEventListener("DOMContentLoaded", () => {
     btnNext.disabled = true;
   }
 
+
+
+
+/**
+ * NEU: Bindet Klick-Events an die Tabellen-Header
+ */
+function bindSortEvents() {
+  document.querySelectorAll("#walkthrough-devices-body").forEach(tbody => {
+      const table = tbody.closest('table');
+      if (!table) return;
+
+      table.querySelectorAll("th.sortable-header").forEach((th) => {
+        th.addEventListener("click", () => {
+          const col = th.getAttribute("data-sort");
+          if (!col) return;
+
+          // Einfache Sortierlogik (kein "Raum"-Spezialfall hier)
+          if (__sort.col === col) {
+            __sort.dir = __sort.dir === "asc" ? "desc" : "asc";
+          } else {
+            __sort.col = col;
+            __sort.dir = "asc";
+          }
+
+          // Prüfen, ob wir in der Such- oder Raumansicht sind, und neu laden
+          const findInput = document.getElementById("walkthrough-find-inventory");
+          if (findInput && findInput.value) {
+            handleGlobalDeviceSearch(findInput.value);
+          } else {
+            loadDevicesForRoom(currentRoomId);
+          }
+        });
+      });
+  });
+}
+
+/**
+ * NEU: Aktualisiert die Sortierpfeile (CSS-Klassen)
+ */
+function updateSortIndicators() {
+  const table = document.querySelector("#walkthrough-devices-body").closest('table');
+  if (!table) return;
+
+  table.querySelectorAll(".sortable-header").forEach((header) => {
+    header.classList.remove("sort-asc", "sort-desc");
+    if (header.dataset.sort === __sort.col) {
+      header.classList.add(__sort.dir === "asc" ? "sort-asc" : "sort-desc");
+    }
+  });
+}
+
   /**
    * Lädt die Geräte für die gegebene Raum-ID.
    */
@@ -223,6 +278,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // NEU: Titel zurücksetzen
     document.getElementById("walkthrough-devices-body-title").textContent =
       "Geräte in diesem Raum";
+
+      updateSortIndicators(); // Sortier-Indikatoren aktualisieren
 
     deviceTbody.innerHTML =
       '<tr><td colspan="10" class="text-center">Loading devices...</td></tr>';
@@ -238,8 +295,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const params = new URLSearchParams({
         room_id: roomId,
         status: "all",
-        sort: "category_name",
-        dir: "asc",
+        sort: __sort.col,
+        dir: __sort.dir,
       });
       const devices = await apiFetch(`/api/devices?${params.toString()}`);
 
@@ -268,6 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
    */
   async function handleGlobalDeviceSearch(searchTerm) {
     searchTerm = searchTerm.trim();
+    updateSortIndicators(); // Sortier-Indikatoren aktualisieren
 
     // Wenn das Suchfeld leer ist, zeige die normale Raumansicht
     if (!searchTerm) {
@@ -286,8 +344,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const params = new URLSearchParams({
         q: searchTerm,
         status: "all",
-        sort: "inventory_number", // Sortiert nach Relevanz (InventarNr)
-        dir: "asc",
+        sort: __sort.col, 
+        dir: __sort.dir,
       });
       const devices = await apiFetch(`/api/devices?${params.toString()}`);
 

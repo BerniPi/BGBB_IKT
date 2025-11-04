@@ -311,7 +311,7 @@ function bindFilterEvents() {
   );
 }
 function bindSortEvents() {
-  document.querySelectorAll("th.sortable").forEach((th) => {
+  document.querySelectorAll("th.sortable-header").forEach((th) => {
     th.style.cursor = "pointer";
     // ERSETZE DEN KOMPLETTEN 'click'-LISTENER:
     th.addEventListener("click", () => {
@@ -357,11 +357,49 @@ function bindSortEvents() {
     });
   });
 }
+/**
+ * NEU: Hilfsfunktion zum Setzen der CSS-Klassen für Sortier-Pfeile
+ */
+function updateSortIndicators() {
+  const table = document.querySelector("#devices-table-body").closest('table');
+  if (!table) return;
+
+  // Globale Sortiervariablen von devices.js lesen
+  const currentSortCol = __sort.col;
+  const currentSortDir = __sort.dir;
+
+  table.querySelectorAll(".sortable-header").forEach((header) => {
+    header.classList.remove("sort-asc", "sort-desc");
+    const headerSortKey = header.dataset.sort;
+
+    // Spezialfall "Raum": data-sort="room"
+    // Die Spalte ist aktiv, wenn nach 'room_number' ODER 'room_name' sortiert wird
+    if (headerSortKey === "room") {
+      if (currentSortCol === "room_number" || currentSortCol === "room_name") {
+        header.classList.add(currentSortDir === "asc" ? "sort-asc" : "sort-desc");
+      }
+    } 
+    // Normalfall: data-sort="category_name" === currentSortCol
+    else if (headerSortKey === currentSortCol) {
+      header.classList.add(currentSortDir === "asc" ? "sort-asc" : "sort-desc");
+    }
+  });
+
+  // Standard-Pfeil setzen (Kategorie), falls nichts anderes aktiv ist
+  // (Basierend auf der Standard-Sortierung in r_devices.js)
+  if (!currentSortCol || currentSortCol === 'category_name') {
+      const defaultHeader = table.querySelector('[data-sort="category_name"]');
+      if (defaultHeader && !defaultHeader.classList.contains('sort-asc') && !defaultHeader.classList.contains('sort-desc')) {
+          defaultHeader.classList.add(currentSortDir === "asc" ? "sort-asc" : "sort-desc");
+      }
+  }
+}
 
 // ----------------------------------------------------
 // Geräte-Liste laden & rendern (mit Filtern + Sortierparametern)
 // ----------------------------------------------------
 async function loadDevices() {
+  updateSortIndicators(); // Sortier-Indikatoren aktualisieren
   const tbody = document.getElementById("devices-table-body");
   if (!tbody) return;
   tbody.innerHTML =
