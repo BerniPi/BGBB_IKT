@@ -315,6 +315,35 @@ router.delete("/:id", (req, res) => {
   });
 });
 
+/**
+ * PUT /api/devices/:id/mark-inspected
+ * Setzt 'last_inspected' für ein Gerät auf ein bestimmtes Datum (oder heute).
+ */
+router.put("/:id/mark-inspected", (req, res) => {
+  const { id } = req.params;
+  const { date } = req.body; // Erlaube optionales Datum, falls in der Vergangenheit nachgetragen
+
+  // Wenn kein Datum gesendet wird, nimm das heutige
+  const inspectionDate =
+    (date && String(date).slice(0, 10)) ||
+    new Date().toISOString().slice(0, 10);
+
+  const sql = "UPDATE devices SET last_inspected = ? WHERE device_id = ?";
+
+  db.run(sql, [inspectionDate, id], function (err) {
+    if (err) {
+      return res.status(500).json({ message: err.message });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ message: "Gerät nicht gefunden." });
+    }
+    res.json({
+      message: "Gerät als kontrolliert markiert.",
+      date: inspectionDate,
+    });
+  });
+});
+
 // ... (vor der Sektion RAUM-HISTORIE)
 
 /**

@@ -23,9 +23,13 @@ let taskModalInstance = null;
 let currentSortColumn = "date";
 let currentSortOrder = "desc";
 
+let maintSortColumn = "last_inspected"; // Standard-Sortierung
+let maintSortOrder = "asc"; // Standard-Sortierung
+
 document.addEventListener("DOMContentLoaded", () => {
   // loadTasks() wird aufgerufen, liest den 'selected' Status "open"
   loadTasks();
+  loadMaintenanceTasks();
   populateRoomsSelect();
 
   taskModalInstance = new bootstrap.Modal(document.getElementById("taskModal"));
@@ -53,22 +57,38 @@ document.addEventListener("DOMContentLoaded", () => {
     .addEventListener("change", loadTasks);
   document.getElementById("filter-q").addEventListener("input", loadTasks);
 
-  // NEU: Event Listener für klickbare Spalten-Header
-  document.querySelectorAll(".sortable-header").forEach((header) => {
+
+// KORREKTUR: Listener für die HAUPT-Taskliste
+  document.querySelector("#tasks-table-body").closest('table').querySelectorAll("th.sortable-header").forEach((header) => {
     header.addEventListener("click", () => {
       const newSortColumn = header.dataset.sort;
 
       if (newSortColumn === currentSortColumn) {
-        // Wenn dieselbe Spalte, Reihenfolge umdrehen
         currentSortOrder = currentSortOrder === "asc" ? "desc" : "asc";
       } else {
-        // Neue Spalte, Standard-Sortierung (aufsteigend)
         currentSortColumn = newSortColumn;
-        currentSortOrder = "asc";
+        currentSortOrder = "asc"; // Standard-Sortierung
       }
-
-      // Aufgaben neu laden mit der neuen Sortierung
+      // Ruft die Funktion zum Laden der HAUPT-Aufgabenliste auf
       loadTasks();
+    });
+  });
+
+
+  // NEU: Listener für die WARTUNGS-Taskliste
+  document.querySelector("#maintenance-tasks-table-body").closest('table').querySelectorAll("th.sortable-header").forEach((header) => {
+    header.addEventListener("click", () => {
+      const newSortColumn = header.dataset.sort;
+
+      if (newSortColumn === maintSortColumn) {
+        maintSortOrder = maintSortOrder === "asc" ? "desc" : "asc";
+      } else {
+        maintSortColumn = newSortColumn;
+        // Standard-Sortierrichtung für neue Spalten
+        maintSortOrder = (newSortColumn === 'last_inspected' || newSortColumn === 'due_date') ? 'asc' : 'asc';
+      }
+      // Ruft die Funktion zum Laden der Wartungsliste auf
+      loadMaintenanceTasks();
     });
   });
 
@@ -247,7 +267,11 @@ async function populateRoomsSelect() {
 
 // NEU: Hilfsfunktion zum Setzen der CSS-Klassen für Sortier-Pfeile
 function updateSortIndicators() {
-  document.querySelectorAll(".sortable-header").forEach((header) => {
+  // KORREKTUR: Nur die Header der HAUPT-Tabelle auswählen
+  const table = document.querySelector("#tasks-table-body").closest('table');
+  if (!table) return;
+
+  table.querySelectorAll(".sortable-header").forEach((header) => {
     // Zuerst alle Indikatoren entfernen
     header.classList.remove("sort-asc", "sort-desc");
 
@@ -420,4 +444,133 @@ async function handleCompleteTaskSubmit(event) {
     console.error("Fehler beim Abschließen der Aufgabe:", error);
     alert(`Fehler beim Abschließen: ${error.message}`);
   }
+}
+
+
+// -----------------------------------------------------------------
+// NEUE FUNKTIONEN für die fälligen Wartungen
+// (Füge diese Funktionen am Ende der Datei tasks.js ein)
+// -----------------------------------------------------------------
+
+/**
+ * NEU: Hilfsfunktion zum Setzen der CSS-Klassen für Wartungs-Sortier-Pfeile
+ */
+function updateMaintSortIndicators() {
+  // Wichtig: Nur die Header der Wartungstabelle auswählen
+  const table = document.querySelector("#maintenance-tasks-table-body").closest('table');
+  if (!table) return;
+
+  table.querySelectorAll("th.sortable-header").forEach((header) => {
+    // Zuerst alle Indikatoren entfernen
+    header.classList.remove("sort-asc", "sort-desc");
+
+    // Den Indikator für die aktuell gewählte Spalte setzen
+    if (header.dataset.sort === maintSortColumn) {
+      header.classList.add(maintSortOrder === "asc" ? "sort-asc" : "sort-desc");
+    }
+  });
+}
+
+/**
+ * Lädt die Liste der fälligen Wartungen von der neuen API-Route.
+ */
+async function loadMaintenanceTasks() {
+  updateMaintSortIndicators(); // <-- NEU: Pfeile aktualisieren
+
+    const tbody = document.getElementById("maintenance-tasks-table-body");
+    const countBadge = document.getElementById("maintenance-task-count");
+    if (!tbody) return; // Stellt sicher, dass das Element existiert
+
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center">Lade fällige Wartungen...</td></tr>';
+    
+    // NEU: Sortierparameter zur URL hinzufügen
+    const params = new URLSearchParams();
+    params.append("sort", maintSortColumn);
+    params.append("order", maintSortOrder);
+
+    const paramsString = params.toString();
+
+    try {
+        // Ruft die neue API-Route aus r_tasks.js auf
+        const tasks = await apiFetch(`/api/tasks/due-maintenance?${paramsString}`);
+
+        if (countBadge) countBadge.textContent = tasks.length;
+
+        if (tasks.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Keine fälligen Wartungen gefunden.</td></tr>';
+            return;
+        }
+
+        // Rendert jede Zeile mit der Hilfsfunktion
+        tbody.innerHTML = tasks.map(renderMaintenanceTaskRow).join('');
+
+    } catch (error) {
+        console.error("Fehler beim Laden der fälligen Wartungen:", error);
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Laden fehlgeschlagen: ${error.message}</td></tr>`;
+    }
+}
+
+/**
+ * Erstellt das HTML für eine einzelne "Fällige Wartung"-Zeile.
+ * @param {object} task - Das Gerät-Objekt von der API
+ */
+function renderMaintenanceTaskRow(task) {
+    const deviceName = escapeHtml(task.hostname || task.serial_number || `ID ${task.device_id}`);
+    const modelName = escapeHtml(task.model_name || 'N/A');
+    const room = escapeHtml(task.room_name ? `${task.room_name} (${task.room_number || '?'})` : 'Kein Raum');
+    const lastInspected = escapeHtml(task.last_inspected || 'Nie');
+    const interval = escapeHtml(task.maintenance_interval_months);
+    
+    // Fälligkeitsdatum formatieren und hervorheben
+    let dueDate = 'N/A';
+    let dueClass = '';
+    if (task.due_date === 'Sofort') {
+        dueDate = '<strong class="text-danger">Unbekannt</strong>';
+    } else if (task.due_date) {
+        // Prüfen, ob das Datum heute oder in der Vergangenheit liegt
+        const isOverdue = new Date(task.due_date) <= new Date(new Date().setHours(0,0,0,0));
+        dueDate = escapeHtml(task.due_date);
+        if (isOverdue) {
+            dueClass = 'text-danger fw-bold';
+        }
+    }
+
+return `
+        <tr id="maint-task-row-${task.device_id}">
+            <td>${deviceName}</td> <td>${modelName}</td>
+            <td>${room}</td>
+            <td>${lastInspected}</td>
+            <td>${interval} M.</td>
+            <td class="${dueClass}">${dueDate}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-success" 
+                        title="Als 'heute kontrolliert' markieren"
+                        onclick="markDeviceAsInspected(${task.device_id})">
+                    <i class="bi bi-check-lg"></i>
+                </button>
+            </td>
+        </tr>
+    `;
+}
+
+/**
+ * Ruft die API auf, um ein Gerät als kontrolliert zu markieren.
+ * Muss im globalen Scope (window.) sein, um von onclick() gefunden zu werden.
+ * @param {number} deviceId - Die ID des Geräts
+ */
+window.markDeviceAsInspected = async function(deviceId) {
+    
+    try {
+        // Ruft die neue API-Route aus r_devices.js auf
+        await apiFetch(`/api/devices/${deviceId}/mark-inspected`, {
+            method: 'PUT'
+            // Body ist optional, da das Backend 'today' als Default nimmt
+        });
+        
+        // Erfolgreich - lade die Liste neu, um die Zeile zu entfernen
+        loadMaintenanceTasks();
+
+    } catch (error) {
+        alert(`Fehler beim Markieren: ${error.message}`);
+    }
 }

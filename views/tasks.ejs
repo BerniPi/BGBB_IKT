@@ -41,27 +41,56 @@ font-size: 0.8em; }
 class="form-label">Volltextsuche</label><input type="search" id="filter-q" class="form-control" placeholder="Aufgabe, Notiz, Person..."></div>
             </div>
             <div class="table-responsive">
-
-              <table class="table table-striped table-hover">
-                    <thead>
-                        <tr>
-                            <th class="sortable-header sort-desc" data-sort="date">Datum</th>
-                            <th class="sortable-header" data-sort="status">Status</th>
-                            <th class="sortable-header" data-sort="priority">Priorität</th>
-                            <th class="sortable-header" data-sort="category">Kategorie</th>
-                            <th class="sortable-header" data-sort="task">Aufgabe</th>
-                            <th class="sortable-header" data-sort="room_name">Raum</th>
-                            <th class="sortable-header" data-sort="assigned_to">Zugewiesen</th>
-                            <th>Aktionen</th>
-
-             </tr>
-                    </thead>
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr>
+                        <th class="sortable-header sort-desc" data-sort="date">Datum</th>
+                        <th class="sortable-header" data-sort="status">Status</th>
+                        <th class="sortable-header" data-sort="priority">Priorität</th>
+                        <th class="sortable-header" data-sort="category">Kategorie</th>
+                        <th class="sortable-header" data-sort="task">Aufgabe / Notizen</th>
+                        <th class="sortable-header" data-sort="room_name">Raum</th>
+                        <th class="sortable-header" data-sort="assigned_to">Zugewiesen</th>
+                        <th style="width: 120px;">Aktion</th>
+                    </tr>
+                </thead>
                     <tbody id="tasks-table-body">
 
     </tbody>
                 </table>
 
       </div>
+        </div>
+    </div>
+</div>
+
+<div class="card m-2">
+    <div class="card-header bg-light">
+        <h5 class="mb-0">
+            <i class="bi bi-calendar-check me-2"></i> Automatisch fällige Kontrollen
+            <span id="maintenance-task-count" class="badge bg-warning text-dark ms-1">0</span>
+        </h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Diese Liste zeigt alle Geräte an, bei denen das "Zuletzt kontrolliert"-Datum
+            älter als das am Modell hinterlegte Wartungsintervall ist (oder bei denen noch nie eine Kontrolle erfasst wurde).
+        </p>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr>
+                        <th class="sortable-header" data-sort="device">Gerät (Hostname/SN)</th>
+                        <th class="sortable-header" data-sort="model">Modell</th>
+                        <th class="sortable-header" data-sort="room">Raum</th>
+                        <th class="sortable-header sort-asc" data-sort="last_inspected">Zuletzt kontrolliert</th>
+                        <th class="sortable-header" data-sort="interval">Intervall</th>
+                        <th class="sortable-header" data-sort="due_date">Fälligkeit</th> <th>Aktion</th>
+                    </tr>
+                </thead>
+                <tbody id="maintenance-tasks-table-body">
+                    </tbody>
+            </table>
         </div>
     </div>
 </div>

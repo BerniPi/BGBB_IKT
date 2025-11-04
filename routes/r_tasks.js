@@ -67,6 +67,78 @@ router.get("/", (req, res) => {
   });
 });
 
+/**
+ * GET /api/tasks/due-maintenance
+ * Ruft alle Geräte ab, deren 'last_inspected'-Datum abgelaufen ist.
+ * JETZT MIT SORTIERUNG.
+ */
+router.get("/due-maintenance", (req, res) => {
+  const { sort, order } = req.query;
+
+  // Whitelist der Spalten, nach denen sortiert werden darf
+  const sortWhitelist = {
+    device: "d.hostname", // Sortiert nach Hostname für "Gerät"
+    model: "m.model_name",
+    room: "r.room_name",
+    last_inspected: "d.last_inspected",
+    interval: "m.maintenance_interval_months",
+    due_date: "due_date", // Der berechnete Alias
+  };
+
+  const sortOrder = (order || "asc").toUpperCase() === "DESC" ? "DESC" : "ASC";
+  let orderByClause;
+
+  if (sort && sortWhitelist[sort]) {
+    // Wenn eine gültige Sortierung angefordert wurde
+    orderByClause = `ORDER BY ${sortWhitelist[sort]} ${sortOrder}`;
+  } else {
+    // Standard-Sortierung (wie bisher: "Sofort" und älteste Fälligkeit zuerst)
+    orderByClause = `ORDER BY d.last_inspected ASC, due_date ASC`;
+  }
+
+  const sql = `
+    SELECT
+        d.device_id,
+        d.hostname,
+        d.serial_number,
+        d.inventory_number,
+        d.last_inspected,
+        m.model_name,
+        m.maintenance_interval_months,
+        r.room_name,
+        r.room_number,
+        CASE
+            WHEN d.last_inspected IS NULL THEN 'Sofort'
+            ELSE DATE(d.last_inspected, '+' || m.maintenance_interval_months || ' months')
+        END AS due_date
+    FROM devices d
+    JOIN models m ON d.model_id = m.model_id
+    LEFT JOIN room_device_history h ON h.device_id = d.device_id AND h.to_date IS NULL
+    LEFT JOIN rooms r ON h.room_id = r.room_id
+    WHERE
+        m.maintenance_interval_months > 0
+        AND d.status = 'active'
+        AND r.room_id IS NOT NULL 
+        AND r.room_name != 'Archiv' 
+        AND (
+            d.last_inspected IS NULL
+            OR d.last_inspected < DATE('now', '-' || m.maintenance_interval_months || ' months')
+        )
+    ${orderByClause} -- HIER WIRD DIE DYNAMISCHE SORTIERUNG EINGEFÜGT
+  `;
+
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error("DB Error (GET /due-maintenance):", err);
+      return res.status(500).json({
+        message: "Fehler beim Abrufen der fälligen Wartungen.",
+        error: err.message,
+      });
+    }
+    res.json(rows);
+  });
+});
+
 // GET a single task
 router.get("/:id", (req, res) => {
   db.get(
@@ -204,5 +276,9 @@ router.delete("/:id", (req, res) => {
     },
   );
 });
+
+// ... (alle anderen Routen)
+
+
 
 module.exports = router;
