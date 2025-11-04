@@ -7,19 +7,21 @@
         <div class="collapse navbar-collapse" id="mainNavbar">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                 <li class="nav-item">
-                    <a class="nav-link <%= page === 'devices' ? 'active' : '' %>" href="/devices">Geräte</a>
+<a class="nav-link <%= page === 'devices' ? 'active' : '' %>" href="/devices"><i class="bi bi-display me-1"></i> Geräte</a>                </li>
+                <li class="nav-item">
+                    <a class="nav-link <%= page === 'walkthrough' ? 'active' : '' %>" href="/walkthrough"><i class="bi bi-person-lines-fill me-1"></i> Rundgang</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link <%= page === 'walkthrough' ? 'active' : '' %>" href="/walkthrough">🚶 Walkthrough</a>
+                    <a class="nav-link <%= page === 'tasks' ? 'active' : '' %>" href="/tasks"><i class="bi bi-check-circle me-1"></i> Aufgaben</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link <%= page === 'tasks' ? 'active' : '' %>" href="/tasks">✅ Aufgaben</a>
-                </li>
+<a class="nav-link <%= page === 'maintenance' ? 'active' : '' %>" href="/maintenance"><i class="bi bi-tools me-1"></i> Wartung</a>                </li>
                 <li class="nav-item">
-                    <a class="nav-link <%= page === 'maintenance' ? 'active' : '' %>" href="/maintenance">Wartung</a>
+                    <a class="nav-link <%= page === 'master-data' ? 'active' : '' %>" href="/master-data"><i class="bi bi-gear me-1"></i> Stammdaten</a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link <%= page === 'master-data' ? 'active' : '' %>" href="/master-data">⚙️ Stammdaten</a>
+
+                <li class="nav-item" id="nav-users-link">
+                    <a class="nav-link <%= page === 'users' ? 'active' : '' %>" href="/users"><i class="bi bi-person-fill me-1"></i> Benutzer</a>
                 </li>
 
                 <li class="nav-item dropdown">
@@ -48,7 +50,6 @@
 <button class="btn btn-outline-light btn-sm me-2" id="zoom-in-btn" title="Schrift vergrößern">
     <i class="bi bi-zoom-in"></i>
 </button>
-<button class="btn btn-outline-light" id="logoutBtn">Abmelden</button>
-        </div>
+<button class="btn btn-outline-light" id="logoutBtn"><i class="bi bi-box-arrow-right me-1"></i> Abmelden</button>        </div>
     </div>
 </nav>

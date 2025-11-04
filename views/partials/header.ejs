@@ -93,6 +93,42 @@ html {
       if (zoomOutBtn) {
         zoomOutBtn.addEventListener('click', zoomOut);
       }
+
+      // --- NEU: Admin-Menü-Link je nach Rolle ein-/ausblenden ---
+          try {
+            const token = localStorage.getItem('jwtToken'); // Annahme: Token-Schlüssel ist 'token'
+            const usersNavLink = document.getElementById('nav-users-link');
+            
+            if (!usersNavLink) return; // Element nicht gefunden
+
+            if (token) {
+              // Token-Payload extrahieren und decodieren
+              const payloadBase64Url = token.split('.')[1];
+              const payloadBase64 = payloadBase64Url.replace(/-/g, '+').replace(/_/g, '/');
+              const payloadJson = decodeURIComponent(atob(payloadBase64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+              }).join(''));
+              
+              const payload = JSON.parse(payloadJson);
+              
+              // Sichtbarkeit basierend auf der Rolle steuern
+              if (payload.role !== 'admin') {
+                usersNavLink.style.display = 'none';
+              }
+              // (Wenn 'admin', bleibt es sichtbar)
+
+            } else {
+              // Kein Token gefunden (nicht eingeloggt) -> Menü ausblenden
+              usersNavLink.style.display = 'none';
+            }
+          } catch (e) {
+            // Fehler beim Parsen (z.B. ungültiger Token) -> Vorsichtshalber ausblenden
+            console.error('Rollenprüfung für Menü fehlgeschlagen:', e);
+            const usersNavLink = document.getElementById('nav-users-link');
+            if (usersNavLink) {
+               usersNavLink.style.display = 'none';
+            }
+          }
     });
   })();
 </script>

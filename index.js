@@ -47,6 +47,17 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
+// NEU: Admin-Auth Middleware
+const adminAuthMiddleware = (req, res, next) => {
+  // Führt zuerst die normale Authentifizierung aus
+  authMiddleware(req, res, () => {
+    // Prüft dann die Rolle aus dem Token
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admin role required.' });
+    }
+    next();
+  });
+};
 
 const pageAuthMiddleware = (req, res, next) => {
     // Diese Middleware ist für EJS-Seiten gedacht und leitet bei Fehler auf /login um
@@ -71,7 +82,15 @@ app.post('/api/login', (req, res) => {
         if (err || !user) return res.status(401).json({ message: 'Authentifizierung fehlgeschlagen.' });
         bcrypt.compare(password, user.password_hash, (err, result) => {
             if (result) {
-                const token = jwt.sign({ userId: user.user_id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
+                // ALT:
+                // const token = jwt.sign({ userId: user.user_id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
+                
+                // NEU: 'role' zum Token hinzufügen
+                const token = jwt.sign(
+                    { userId: user.user_id, username: user.username, role: user.role }, // <-- HIER
+                    JWT_SECRET, 
+                    { expiresIn: '30d' }
+                );
                 res.json({ token });
             } else {
                 res.status(401).json({ message: 'Authentifizierung fehlgeschlagen.' });
@@ -95,6 +114,7 @@ app.get('/devices', renderPage('devices'));
 app.get('/walkthrough', renderPage('walkthrough'));
 app.get('/devices/import', renderPage('import_devices'));
 app.get('/system-io', renderPage('system_io'));
+app.get('/users', renderPage('users'));
 
 // Geschützte API Endpunkte
 const masterDataRouter = require('./routes/r_masterData');
@@ -103,6 +123,7 @@ const devicesRouter = require('./routes/r_devices');
  const maintenanceRouter = require('./routes/r_maintenance'); // Annahme: Du erstellst diese Dateien
 const importDevicesRouter = require('./routes/r_import_devices');
 const systemRouter = require('./routes/r_system');
+const usersRouter = require('./routes/r_users');
 
 app.use('/api/master-data', authMiddleware, masterDataRouter);
 app.use('/api/tasks', authMiddleware, tasksRouter);
@@ -110,6 +131,7 @@ app.use('/api/maintenance', authMiddleware, maintenanceRouter);
 app.use('/api/devices', authMiddleware, devicesRouter);
 app.use('/api/devices', authMiddleware, importDevicesRouter);
 app.use('/api/system', authMiddleware, systemRouter);
+app.use('/api/users', adminAuthMiddleware, usersRouter);
 
 // Server Start
 

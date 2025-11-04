@@ -1,0 +1,79 @@
+<%- include('partials/header') %>
+<%- include('partials/navbar', { page }) %>
+
+<div class="container-fluid mt-4">
+    <div class="card m-2">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5><i class="bi bi-people-fill me-2"></i> Benutzerverwaltung</h5>
+                 <button class="btn btn-primary" id="newUserBtn">
+                    <i class="bi bi-person-plus-fill"></i> Neuer Benutzer
+                 </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">Hier können Administrator- und Benutzerkonten verwaltet werden.</p>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Rolle</th>
+                            <th>Notizen</th>
+                            <th style="width: 120px;">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="userForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="userModalTitle">Benutzer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="userId">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Username*</label>
+                            <input type="text" id="user-username" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Rolle*</label>
+                            <select id="user-role" class="form-select" required>
+                                <option value="user">Benutzer (Standard)</option>
+                                <option value="admin">Administrator</option>
+                            </select>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Passwort</label>
+                            <input type="password" id="user-password" class="form-control" autocomplete="new-password">
+                            <div class="form-text" id="password-help-text">
+                                Beim Erstellen eines neuen Benutzers erforderlich.
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notizen</label>
+                            <textarea id="user-notes" class="form-control" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Speichern</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<%- include('partials/footer') %>
+<script src="/js/users.js"></script>
