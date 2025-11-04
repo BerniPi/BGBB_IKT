@@ -1,0 +1,266 @@
+<%- include('partials/header') %>
+<%- include('partials/navbar', { page }) %>
+
+<div class="container-fluid mt-4">
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+<h5 class="mb-0">
+        <i class="bi bi-hdd-stack me-2"></i> Geräte
+        <span id="device-count" class="badge bg-secondary ms-1">0</span>
+      </h5>      <button class="btn btn-primary" id="btnNewDevice">
+        <i class="bi bi-plus-lg me-1"></i> Neues Gerät
+      </button>
+    </div>
+
+    <!-- Filterleiste -->
+    <div class="px-3 pt-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">Kategorie</label>
+          <select id="filter-category" class="form-select"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Modell</label>
+          <select id="filter-model" class="form-select"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Raum</label>
+          <select id="filter-room" class="form-select"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Status</label>
+<select id="filter-status" class="form-select">
+            <option value="active" selected>Aktiv</option>
+            <option value="all">Alle (außer Ausgeschieden)</option>
+            <option value="storage">Lager</option>
+            <option value="defective">Defekt</option>
+            <option value="decommissioned">Ausgeschieden</option>
+            <option value="all_incl_decommissioned">Alle (inkl. Ausgeschieden)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sammelaktionen -->
+<div id="bulk-bar" class="alert alert-secondary d-none mt-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-auto">
+      <strong><span id="bulk-count">0</span> ausgewählt</strong>
+    </div>
+    <div class="col-auto">
+      <select id="bulk-action" class="form-select">
+        <option value="">Aktion wählen…</option>
+        <option value="set-status-active">Status: Aktiv</option>
+        <option value="set-status-storage">Status: Lager</option>
+        <option value="set-status-defective">Status: Defekt</option>
+        <option value="set-status-decommissioned">Status: Ausgeschieden</option>
+        <option value="set-purchase-date">Kaufdatum setzen…</option>
+        <option value="set-price">Kaufpreis (€)…</option>
+        <option value="set-warranty-months">Garantie (Monate)…</option>
+        <option value="set-added-at">Hinzugefügt am…</option>
+        <option value="set-decommissioned-at">Ausgeschieden am…</option>
+        <option value="set-last-cleaned">Zuletzt gereinigt…</option>
+        <option value="set-last-inspected">Zuletzt kontrolliert…</option>
+        <option value="set-notes-replace">Notizen ersetzen…</option>
+        <option value="set-notes-append">Notizen anhängen…</option>
+        <option value="add-room-history">Raum-Historie hinzufügen…</option>
+        <option value="delete-selected" class="text-danger">Ausgewählte löschen…</option>
+      </select>
+    </div>
+
+    <!-- dynamische Eingaben je nach Aktion -->
+    <div id="bulk-input-generic" class="col-auto d-none">
+      <input type="text" id="bulk-value" class="form-control" placeholder="Wert eingeben">
+    </div>
+    <div id="bulk-input-date" class="col-auto d-none">
+      <input type="date" id="bulk-date" class="form-control">
+    </div>
+    <div id="bulk-input-number" class="col-auto d-none">
+      <input type="number" step="0.01" id="bulk-number" class="form-control" placeholder="z. B. 12 oder 1299.99">
+    </div>
+
+    <div id="bulk-input-room" class="col-auto d-none">
+      <select id="bulk-room" class="form-select"></select>
+    </div>
+    <div id="bulk-input-room-from" class="col-auto d-none">
+      <input type="date" id="bulk-room-from" class="form-control">
+    </div>
+    <div id="bulk-input-room-to" class="col-auto d-none">
+      <input type="date" id="bulk-room-to" class="form-control">
+    </div>
+    <div id="bulk-input-room-notes" class="col-auto flex-grow-1 d-none">
+      <input type="text" id="bulk-room-notes" class="form-control" placeholder="Notizen (optional)">
+    </div>
+
+    <div class="col-auto">
+      <button id="bulk-apply" class="btn btn-primary">Anwenden</button>
+      <button id="bulk-clear" class="btn btn-outline-secondary">Auswahl aufheben</button>
+    </div>
+  </div>
+</div>
+
+
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th style="width:36px;">
+                <input type="checkbox" id="select-all-devices">
+              </th>
+              <th data-sort="category_name" class="sortable">Kategorie</th>
+              <th data-sort="model_name" class="sortable">Modell</th>
+
+              <th data-sort="hostname" class="sortable">Hostname</th>
+              
+
+              <th data-sort="serial_number" class="sortable">Seriennummer</th>
+              <th data-sort="inventory_number" class="sortable">Inventarnummer</th>
+              <th data-sort="mac_address" class="sortable">MAC-Adresse</th>
+              <th data-sort="ip_address" class="sortable">IP-Adresse</th>
+              <th data-sort="room" class="sortable">Raum</th>
+              <th data-sort="active" class="sortable">Status</th>
+              <th style="width:120px;">Aktion</th>
+            </tr>
+          </thead>
+          <tbody id="devices-table-body">
+            <!-- per JS geladen -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Device Modal -->
+<div class="modal fade" id="deviceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <form id="deviceForm">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i> Gerät bearbeiten</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+        </div>
+
+        <div class="modal-body pb-3">
+          <input type="hidden" id="device-device_id">
+
+<div class="row g-3">
+            <div class="col-md-6">
+              <label for="device-model_id" class="form-label">Modell</label>
+              <select id="device-model_id" class="form-select">
+                </select>
+            </div>
+
+            <div class="col-md-6">
+              <label for="device-hostname" class="form-label">Kurzname/Netzwerkname</label>
+              <input type="text" id="device-hostname" class="form-control">
+            </div>
+
+            <div class="col-md-6">
+              <label for="device-serial_number" class="form-label">Seriennummer</label>
+              <input type="text" id="device-serial_number" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label for="device-inventory_number" class="form-label">Inventarnummer</label>
+              <input type="text" id="device-inventory_number" class="form-control">
+            </div>
+
+            <div id="network-fields" class="row g-3 d-none">
+              <div class="col-md-6">
+                <label for="device-mac_address" class="form-label">MAC-Adresse</label>
+                <input type="text" id="device-mac_address" class="form-control" placeholder="z. B. AA:BB:CC:DD:EE:FF">
+              </div>
+              <div class="col-md-6">
+                <label for="device-ip_address" class="form-label">IP-Adresse</label>
+                <input type="text" id="device-ip_address" class="form-control" placeholder="z. B. 192.168.1.10">
+              </div>
+            </div>
+
+            <!-- Kauf- und Garantie-Informationen -->
+            <div class="col-md-3">
+              <label for="device-purchase_date" class="form-label">Kaufdatum</label>
+              <input type="date" id="device-purchase_date" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label for="device-price" class="form-label">Kaufpreis (€)</label>
+              <input type="number" step="0.01" min="0" id="device-price" class="form-control" placeholder="z. B. 1499.99">
+            </div>
+            <div class="col-md-3">
+              <label for="device-warranty_months" class="form-label">Garantie (Monate)</label>
+              <input type="number" min="0" id="device-warranty_months" class="form-control" placeholder="z. B. 24">
+            </div>
+
+            <!-- Datumsangaben -->
+            <div class="col-md-3">
+              <label for="device-added_at" class="form-label">Hinzugefügt am</label>
+              <input type="date" id="device-added_at" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label for="device-decommissioned_at" class="form-label">Ausgeschieden am</label>
+              <input type="date" id="device-decommissioned_at" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label for="device-last_cleaned" class="form-label">Zuletzt gereinigt</label>
+              <input type="date" id="device-last_cleaned" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label for="device-last_inspected" class="form-label">Zuletzt kontrolliert</label>
+              <input type="date" id="device-last_inspected" class="form-control">
+            </div>
+
+            <!-- Notizen -->
+            <div class="col-12">
+              <label for="device-notes" class="form-label">Notizen</label>
+              <textarea id="device-notes" rows="2" class="form-control" placeholder="Freitext …"></textarea>
+            </div>
+          </div>
+
+          <hr class="my-3">
+
+          <!-- Raum-Historie -->
+          <h6 class="mb-2">Raum-Historie</h6>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th style="width:22%">Von</th>
+                  <th style="width:22%">Bis</th>
+                  <th style="width:36%">Raum</th>
+                  <th style="width:12%">Notizen</th>
+                  <th style="width:8%"></th>
+                </tr>
+              </thead>
+              <tbody id="room-history-body">
+                <!-- per JS geladen -->
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td><input type="date" id="rh-from" class="form-control"></td>
+                  <td><input type="date" id="rh-to" class="form-control" placeholder="leer = offen"></td>
+                  <td><select id="rh-room" class="form-select"></select></td>
+                  <td><input type="text" id="rh-notes" class="form-control" placeholder="Notizen"></td>
+                  <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-primary" id="rh-add">
+                      <i class="bi bi-plus-lg"></i>
+                    </button>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save me-1"></i> Speichern
+          </button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>
+<script src="/js/devices.js"></script>

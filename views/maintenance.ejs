@@ -1,0 +1,153 @@
+<%- include('partials/header') %>
+<%- include('partials/navbar', { page }) %>
+
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm m-2">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="bi bi-tools me-2"></i> Wartung / Änderungen
+                <span id="maintenance-count" class="badge bg-secondary ms-1">0</span>
+            </h5>
+            <button id="new-maintenance-btn" class="btn btn-primary">
+                <i class="bi bi-plus-circle me-1"></i> Neuer Eintrag
+            </button>
+        </div>
+
+        <div class="px-3 pt-3 border-bottom">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label for="filter-q" class="form-label">Suche</label>
+                    <input type="text" id="filter-q" class="form-control" placeholder="Titel, Gerät, Person...">
+                </div>
+                <div class="col-md-2">
+                    <label for="filter-device" class="form-label">Gerät</label>
+                    <select id="filter-device" class="form-select">
+                        <option value="">Alle Geräte</option>
+                        </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="filter-type" class="form-label">Typ</label>
+                    <select id="filter-type" class="form-select">
+                        <option value="">Alle Typen</option>
+                        <option value="inspection">Inspektion</option>
+                        <option value="cleaning">Reinigung</option>
+                        <option value="repair">Reparatur</option>
+                        <option value="upgrade">Upgrade</option>
+                        <option value="config">Konfiguration</option>
+                        <option value="other">Andere</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="filter-status" class="form-label">Status</label>
+                    <select id="filter-status" class="form-select">
+                        <option value="">Alle Status</option>
+                        <option value="done">Erledigt</option>
+                        <option value="planned">Geplant</option>
+                        <option value="in_progress">In Arbeit</option>
+                        <option value="canceled">Abgebrochen</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                     <div class="me-1 flex-grow-1">
+                         <label for="filter-from" class="form-label">Von</label>
+                         <input type="date" id="filter-from" class="form-control">
+                     </div>
+                     <div class="flex-grow-1">
+                         <label for="filter-to" class="form-label">Bis</label>
+                         <input type="date" id="filter-to" class="form-control">
+                     </div>
+                      <button id="clear-filters-btn" class="btn btn-sm btn-outline-secondary ms-2 mb-1" title="Filter zurücksetzen"><i class="bi bi-x-lg"></i></button>
+                </div>
+            </div>
+             <div class="pb-2"></div>
+        </div>
+
+
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th data-sort="event_date" class="sortable">Datum</th>
+                            <th data-sort="device_info" class="sortable">Gerät</th>
+                            <th data-sort="event_type" class="sortable">Typ</th>
+                            <th data-sort="title" class="sortable">Titel</th>
+                            <th data-sort="status" class="sortable">Status</th>
+                            <th data-sort="performed_by" class="sortable">Durchgeführt von</th>
+                            <th style="width: 120px;">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="maintenance-table-body">
+                        <tr><td colspan="7" class="text-center text-muted">Lade Daten...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="maintenanceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="maintenanceForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="maintenanceModalTitle">Wartungseintrag</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    
+                    <input type="hidden" id="maintenanceId">
+                    
+
+                    <div class="row g-3">
+              
+                        <div class="col-12 mb-2" id="modal-device-select-container">
+                            <label for="maintenance-device_id" class="form-label">Gerät*</label>
+                            <select id="maintenance-device_id" class="form-select" required>
+                                <option value="" disabled selected>Bitte Gerät wählen...</option>
+                                                         </select>
+                             <small id="modal-device-info-display" class="text-muted d-none"></small> 
+                        </div>
+
+                        
+                        <div class="col-md-4"><label class="form-label">Datum*</label><input type="date" id="maintenance-event_date" class="form-control" required></div>
+                        <div class="col-md-8"><label class="form-label">Titel*</label><input type="text" id="maintenance-title" class="form-control" placeholder="z.B. RAM aufgerüstet" required></div>
+                        <div class="col-md-4">
+                            <label class="form-label">Typ*</label>
+                            <select id="maintenance-event_type" class="form-select" required>
+                                <option value="inspection">Inspektion</option>
+                                <option value="cleaning">Reinigung</option>
+                                <option value="repair">Reparatur</option>
+                                <option value="upgrade">Upgrade</option>
+                                <option value="config">Konfiguration</option>
+                                <option value="other">Sonstiges</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Status</label>
+                            <select id="maintenance-status" class="form-select">
+                                <option value="done">Erledigt</option>
+                                <option value="planned">Geplant</option>
+                                <option value="in_progress">In Arbeit</option>
+                                <option value="canceled">Abgebrochen</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4"><label class="form-label">Durchgeführt von</label><input type="text" id="maintenance-performed_by" class="form-control"></div>
+                        <div class="col-12"><label class="form-label">Beschreibung</label><textarea id="maintenance-description" class="form-control" rows="3"></textarea></div>
+
+                         
+
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Speichern</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<%- include('partials/footer') %>
+<script src="/js/devices.js"></script> 
+<script src="/js/maintenance.js"></script>

@@ -1,0 +1,47 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">Inventar DB</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="mainNavbar">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item">
+                    <a class="nav-link <%= page === 'devices' ? 'active' : '' %>" href="/devices">Geräte</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link <%= page === 'walkthrough' ? 'active' : '' %>" href="/walkthrough">🚶 Walkthrough</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link <%= page === 'tasks' ? 'active' : '' %>" href="/tasks">✅ Aufgaben</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link <%= page === 'maintenance' ? 'active' : '' %>" href="/maintenance">Wartung</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link <%= page === 'master-data' ? 'active' : '' %>" href="/master-data">⚙️ Stammdaten</a>
+                </li>
+
+                <li class="nav-item dropdown">
+                  <a class="nav-link dropdown-toggle <%= (page === 'devices-import' || page === 'system-io') ? 'active' : '' %>" href="#" id="navbarDropdownImportExport" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-database-fill-gear me-1"></i> Import/Export
+                  </a>
+                  <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarDropdownImportExport">
+                    <li>
+                      <a class="dropdown-item <%= page === 'devices-import' ? 'active' : '' %>" href="/devices/import">
+                        <i class="bi bi-file-earmark-excel me-1"></i> Geräte-Import (Alt)
+                      </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                      <a class="dropdown-item <%= page === 'system-io' ? 'active' : '' %>" href="/system-io">
+                        <i class="bi bi-box-arrow-down me-1"></i> System Export/Import
+                      </a>
+                    </li>
+                  </ul>
+                </li>
+                </ul>
+            <button class="btn btn-outline-light" id="logoutBtn">Abmelden</button>
+        </div>
+    </div>
+</nav>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventardatenbank</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+<style>
+/* NEU: Globale Schriftgröße für die gesamte Anwendung reduzieren */
+body {
+    font-size: 1rem; /* Standard ist 1rem (ca. 16px), dies ist ca. 14.4px */
+}
+
+.modal-dialog-scrollable .modal-body {
+  overflow-y: auto !important;
+  max-height: calc(100vh - var(--bs-modal-margin) * 2 - 120px);
+}
+.modal {
+  overflow-x: hidden;
+}
+
+/* Mobil: sicherstellen, dass Body sauber scrollt und Footer sichtbar bleibt */
+@media (max-width: 576px) {
+  #deviceModal .modal-content {
+    height: 100dvh;           /* dynamische Höhe inkl. Mobile-URL-Bar */
+    display: flex;
+    flex-direction: column;
+  }
+  #deviceModal .modal-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+  }
+  #deviceModal .modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: var(--bs-body-bg);
+    box-shadow: 0 -2px 8px rgba(0,0,0,.06);
+    z-index: 1;
+  }
+}
+</style>
+
+</head>
+<body>

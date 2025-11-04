@@ -1,0 +1,10 @@
+/* Stelle sicher, dass die .modal-body wirklich scrollt */
+.modal-dialog-scrollable .modal-body {
+    overflow-y: auto !important;
+    max-height: calc(100vh - var(--bs-modal-margin) * 2 - 120px);
+}
+
+/* Sicherheitshalber: horizontales Scrollen vermeiden */
+.modal {
+    overflow-x: hidden;
+}

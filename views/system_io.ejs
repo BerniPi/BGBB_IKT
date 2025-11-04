@@ -1,0 +1,192 @@
+<%- include('partials/header') %>
+<%- include('partials/navbar', { page: 'system-io' }) %>
+
+<div class="container py-4">
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header">
+      <h5 class="mb-0"><i class="bi bi-download me-2"></i> System-Export</h5>
+    </div>
+    <div class="card-body">
+      <p class.text-muted">
+        Erstellt eine Excel-Datei (`.xlsx`) mit allen wichtigen Datenbank-Tabellen auf separaten Blättern.
+        Die <strong>Benutzer-Tabelle (`users`)</strong> wird aus Sicherheitsgründen ignoriert.
+      </p>
+
+      <a href="#" id="exportButton" class="btn btn-success">
+        <i class="bi bi-file-earmark-excel me-1"></i> Alle Daten als Excel exportieren
+      </a>
+      <div id="exportResult" class="alert mt-3 d-none"></div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-danger">
+    <div class="card-header bg-danger text-white">
+      <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i> System-Import (DESTRUKTIV)</h5>
+    </div>
+    <div class="card-body">
+      <p class="fw-bold text-danger">
+        WARNUNG: Diese Aktion überschreibt alle vorhandenen Daten in der Datenbank mit den Inhalten der Excel-Datei. [cite: 37]
+        Alle Tabellen (außer `users`) werden zuerst gelöscht und dann neu befüllt. [cite: 37, 38]
+      </p>
+      <p>Dieser Vorgang kann nicht rückgängig gemacht werden.  Verwenden Sie dies nur, um einen zuvor exportierten Zustand wiederherzustellen. </p>
+      
+      <form id="importForm" class="mt-3"> 
+        <div class="mb-3">
+          <label class="form-label">Excel-Backup-Datei (.xlsx)</label>
+          <input type="file" name="file" id="importFile" accept=".xlsx" class="form-control" required>
+        </div>
+        
+        <div class="form-check text-danger mb-3">
+          <input class="form-check-input" type="checkbox" id="confirmCheckbox"> [cite: 40]
+          <label class="form-check-label fw-bold" for="confirmCheckbox">
+            Ich verstehe, dass diese Aktion alle meine Daten (außer Benutzer) löscht und überschreibt. [cite: 41]
+          </label>
+        </div>
+
+        <button type="submit" id="importButton" class="btn btn-danger" disabled>
+          <i class="bi bi-upload me-1"></i> Import starten und DATEN ÜBERSCHREIBEN
+        </button>
+      </form>
+
+      <div id="importResult" class="alert mt-3 d-none"></div>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>
+
+<script>
+(() => {
+  const token = localStorage.getItem('jwtToken'); 
+  if (!token) { 
+    // Wenn kein Token da ist, alles deaktivieren
+    document.getElementById('exportButton')?.setAttribute('disabled', true);
+    document.getElementById('importButton')?.setAttribute('disabled', true);
+    return;
+  }
+
+  // --- NEU: Export-Logik ---
+  const exportBtn = document.getElementById('exportButton');
+  const exportResultDiv = document.getElementById('exportResult');
+  
+  if (exportBtn) {
+    exportBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      if (!token) {
+         alert('Kein Login-Token gefunden. Bitte neu einloggen.');
+         return;
+      }
+      
+      exportBtn.disabled = true;
+      exportBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Export läuft...';
+      exportResultDiv.classList.add('d-none');
+      exportResultDiv.classList.remove('alert-danger');
+
+      try {
+        const res = await fetch('/api/system/export', {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + token } // Token mitsenden
+        });
+
+        if (!res.ok) {
+          throw new Error(`Export fehlgeschlagen (HTTP ${res.status})`);
+        }
+
+        // 1. Dateinamen aus dem Header extrahieren
+        const disposition = res.headers.get('content-disposition');
+        let filename = 'backup_inventardb.xlsx'; // Fallback
+        if (disposition && disposition.includes('filename=')) {
+          filename = disposition.split('filename=')[1].replace(/"/g, '');
+        }
+
+        // 2. Datei als Blob (Rohdaten) empfangen
+        const blob = await res.blob();
+
+        // 3. Unsichtbaren Download-Link erstellen und klicken
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        
+        // 4. Aufräumen
+        a.remove();
+        URL.revokeObjectURL(url);
+
+      } catch (err) {
+        exportResultDiv.textContent = 'Export fehlgeschlagen: ' + (err.message || 'Unbekannter Fehler');
+        exportResultDiv.classList.add('alert-danger');
+        exportResultDiv.classList.remove('d-none');
+      } finally {
+        exportBtn.disabled = false;
+        exportBtn.innerHTML = '<i class="bi bi-file-earmark-excel me-1"></i> Alle Daten als Excel exportieren';
+      }
+    });
+  }
+
+
+  // --- Bestehende Import-Logik (Unverändert) ---
+  const importForm = document.getElementById('importForm'); 
+  const importFileInput = document.getElementById('importFile');
+  const importCheckbox = document.getElementById('confirmCheckbox');
+  const importButton = document.getElementById('importButton');
+  const importResultDiv = document.getElementById('importResult');
+
+  if (!importForm) return;
+
+  importCheckbox.addEventListener('change', () => { 
+    importButton.disabled = !importCheckbox.checked;
+  });
+
+  importForm.addEventListener('submit', async (e) => { 
+    e.preventDefault();
+    importResultDiv.classList.add('d-none');
+    importResultDiv.classList.remove('alert-success', 'alert-danger');
+
+    const file = importFileInput?.files?.[0]; 
+    if (!file) { 
+      alert('Bitte eine Excel-Datei auswählen.');
+      return;
+    }
+    if (!importCheckbox.checked) { 
+      alert('Bitte bestätigen Sie die Warnung, um fortzufahren.');
+      return;
+    }
+    
+    importButton.disabled = true; 
+    importButton.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Import läuft...'; 
+    
+    const fd = new FormData(); 
+        fd.append('file', file); 
+
+    try {
+      const res = await fetch('/api/system/import', { 
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token }, 
+        body: fd
+      });
+      const result = await res.json(); 
+
+      if (!res.ok) { 
+        throw new Error(result.message || `HTTP-Fehler ${res.status}`);
+      }
+
+      importResultDiv.textContent = result.message; 
+      importResultDiv.classList.add('alert-success'); 
+      importResultDiv.classList.remove('d-none'); 
+      importForm.reset(); 
+
+    } catch (err) {
+      importResultDiv.textContent = 'Import fehlgeschlagen: ' + (err.message || 'Unbekannter Fehler'); 
+      importResultDiv.classList.add('alert-danger'); 
+      importResultDiv.classList.remove('d-none'); 
+    } finally {
+      importButton.disabled = false; 
+      importButton.innerHTML = '<i class="bi bi-upload me-1"></i> Import starten und DATEN ÜBERSCHREIBEN';
+      importCheckbox.checked = false;
+    }
+  });
+})();
+</script>

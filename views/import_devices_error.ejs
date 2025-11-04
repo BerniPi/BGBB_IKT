@@ -1,0 +1,31 @@
+<%- include('partials/header') %>
+<%- include('partials/navbar', { page }) %>
+
+<div class="container py-4">
+  <div class="card shadow-sm border-danger">
+    <div class="card-header bg-danger text-white">
+      <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i> Import fehlgeschlagen</h5>
+    </div>
+    <div class="card-body">
+      <p class="text-danger fw-bold">Beim Verarbeiten der Excel-Datei ist ein Fehler aufgetreten:</p>
+      <pre class="alert alert-danger"><code><%- error %></code></pre>
+
+      <p class="text-muted">
+        Bitte überprüfe die Fehlermeldung und die hochgeladene Datei. Mögliche Ursachen sind:
+      </p>
+      <ul>
+        <li>Falsches Dateiformat (nur .xlsx oder .xls erlaubt).</li>
+        <li>Fehlende oder falsch benannte Spaltenüberschriften in der ersten Zeile.</li>
+        <li>Unerwartete Datenformate in den Zellen (z.B. Text statt Datum).</li>
+        <li>Datenbankfehler (z.B. UNIQUE-Konflikte, die nicht abgefangen wurden).</li>
+      </ul>
+
+      <div class="mt-4">
+        <a href="/api/devices/import" class="btn btn-outline-primary">Neuen Import starten</a>
+        <a href="/devices" class="btn btn-secondary ms-2">Zurück zur Übersicht</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>

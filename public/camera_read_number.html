@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kamera Zahl auslesen (Barcode oder OCR)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 1rem; max-width:800px; margin:auto; }
+    video { width: 100%; max-height:60vh; background:#000; border-radius:8px; }
+    #controls { margin-top:0.5rem; display:flex; gap:0.5rem; }
+    button { padding:0.6rem 0.9rem; border-radius:6px; border:1px solid #ccc; background:#fff; cursor:pointer; }
+    #result { margin-top:1rem; font-size:1.25rem; font-weight:600; color:#0a6; }
+    #overlay { position: absolute; left:0; top:0; right:0; text-align:center; pointer-events:none; color:#fff; font-weight:bold; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+    .video-wrap { position:relative; }
+    #log { margin-top:0.5rem; color:#666; font-size:0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Kamera: Zahl einlesen</h1>
+  <p>Öffnet die Handykamera, versucht zuerst Barcodes/QR zu lesen, sonst OCR (Ziffern).</p>
+
+  <div class="video-wrap">
+    <video id="video" playsinline autoplay></video>
+    <div id="overlay"></div>
+  </div>
+
+  <div id="controls">
+    <button id="startBtn">Kamera starten</button>
+    <button id="stopBtn" disabled>Stopp</button>
+    <button id="snapBtn" disabled>Einmal scannen</button>
+  </div>
+
+  <div id="result">Ergebnis: <span id="number">—</span></div>
+  <div id="log">Log: <span id="logText">bereit</span></div>
+
+  <!-- Tesseract.js von CDN -->
+  <script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+
+  <script>
+  (function(){
+    const video = document.getElementById('video');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const snapBtn  = document.getElementById('snapBtn');
+    const overlay  = document.getElementById('overlay');
+    const numberEl = document.getElementById('number');
+    const logText  = document.getElementById('logText');
+
+    let stream = null;
+    let scanning = false;
+    let scanInterval = null;
+    let barcodeDetector = null;
+    let tesseractWorker = null;
+
+    // canvas für Framegrab
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    function log(msg){ logText.textContent = msg; }
+
+    async function initBarcodeDetector(){
+      if ('BarcodeDetector' in window) {
+        const supported = await BarcodeDetector.getSupportedFormats().catch(()=>[]);
+        // wir interessieren uns z.B. für 'code_128','ean_13','qr_code' — bleibt offen
+        barcodeDetector = new BarcodeDetector({formats: supported});
+        log('BarcodeDetector bereit. Formate: ' + supported.join(', '));
+      } else {
+        log('BarcodeDetector nicht verfügbar — OCR als Fallback.');
+        barcodeDetector = null;
+      }
+    }
+
+    async function initTesseract(){
+      if (!tesseractWorker){
+        log('Tesseract worker wird geladen (kann Sekunden dauern)...');
+        tesseractWorker = Tesseract.createWorker({
+          logger: m => {
+            // optional: zeige Fortschritt
+            if (m.status) log('Tesseract: ' + m.status + (m.progress ? ' ' + Math.round(m.progress*100)+'%':''));
+          }
+        });
+        await tesseractWorker.load();
+        await tesseractWorker.loadLanguage('eng'); // englisch reicht für Ziffern
+        await tesseractWorker.initialize('eng');
+        // whitelisting nur Ziffern, beschleunigt u. verbessert Ergebnis
+        await tesseractWorker.setParameters({
+          tessedit_char_whitelist: '0123456789',
+          preserve_interword_spaces: '0'
+        });
+        log('Tesseract bereit.');
+      }
+    }
+
+    async function startCamera(){
+      try {
+        // wähle Rückkamera, wenn verfügbar
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+        video.srcObject = stream;
+        await video.play();
+
+        // Canvas-Größe auf Video skalieren
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        snapBtn.disabled = false;
+        scanning = true;
+
+        await initBarcodeDetector();
+        // nur bei Bedarf Tesseract laden (kostet Zeit) — wir laden schon, damit Snap schnell geht
+        initTesseract();
+
+        // zyklisches Scannen (nur wenn BarcodeDetector vorhanden, sonst Snap)
+        if (barcodeDetector) {
+          scanInterval = setInterval(detectFrame, 400); // alle 400ms
+          log('Automatisches Scannen läuft (BarcodeDetector).');
+        } else {
+          log('Drücke "Einmal scannen" für OCR oder starte manuell.');
+        }
+
+      } catch (e){
+        console.error(e);
+        log('Kamera konnte nicht gestartet werden: ' + e.message);
+        alert('Kamerazugriff erforderlich (HTTPS). Fehler: ' + e.message);
+      }
+    }
+
+    function stopCamera(){
+      scanning = false;
+      if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+      video.pause();
+      video.srcObject = null;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      snapBtn.disabled = true;
+      log('Kamera gestoppt.');
+    }
+
+    async function detectFrame(){
+      if (!scanning || !video || video.readyState < 2) return;
+      try {
+        // BarcodeDetector: direkt auf Video-Element möglich
+        const barcodes = await barcodeDetector.detect(video);
+        if (barcodes && barcodes.length){
+          // Suche nach reiner Zahl im rawValue
+          for (const bc of barcodes){
+            const raw = (bc.rawValue || '').trim();
+            const found = raw.match(/(\d+)/);
+            if (found){
+              showResult(found[1]);
+              return;
+            }
+          }
+        }
+        // Optional: visuelles Feedback
+        overlay.textContent = 'scannen...';
+      } catch (err) {
+        // Falls detect scheitert, deaktiviere BarcodeDetector
+        console.warn('Barcode detect error', err);
+        overlay.textContent = '';
+      }
+    }
+
+    function showResult(val){
+      numberEl.textContent = val;
+      overlay.textContent = '✔ ' + val;
+      log('Zahl gefunden: ' + val);
+      // stoppe automatische Scans kurz
+      if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+      // optional: stopCamera(); // falls gewünschtes Verhalten
+    }
+
+    // Manuelles Snap -> OCR fallback
+    async function snapAndOCR(){
+      if (!scanning) { alert('Bitte zuerst Kamera starten'); return; }
+      if (video.readyState < 2) { alert('Video nicht einsatzbereit'); return; }
+
+      // zeichne aktuellen Frame in Canvas (kleiner Render für Performance)
+      const w = Math.min(1280, video.videoWidth || 1280);
+      const h = Math.min(720, video.videoHeight || 720);
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(video, 0, 0, w, h);
+
+      // optional: crop bereich in der Mitte (wo typischerweise Zahl steht)
+      // const cropW = Math.floor(w * 0.7);
+      // const cropH = Math.floor(h * 0.3);
+      // const cropX = Math.floor((w - cropW)/2);
+      // const cropY = Math.floor((h - cropH)/2);
+      // const imgData = ctx.getImageData(cropX, cropY, cropW, cropH);
+      // canvas.width = cropW; canvas.height = cropH; ctx.putImageData(imgData, 0, 0);
+
+      // verbessere Kontrast / grayscale (einfacher Ansatz)
+      const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+      for (let i=0;i<img.data.length;i+=4){
+        const r=img.data[i], g=img.data[i+1], b=img.data[i+2];
+        // Luma
+        const l = 0.2126*r + 0.7152*g + 0.0722*b;
+        // Kontrastverstärkung (clip)
+        img.data[i]=img.data[i+1]=img.data[i+2]=Math.min(255, Math.max(0, (l-100)*1.4 + 100));
+      }
+      ctx.putImageData(img,0,0);
+
+      // optional: zeige kurz Vorschaubild als overlay
+      overlay.textContent = 'OCR läuft...';
+
+      // OCR via Tesseract
+      await initTesseract(); // falls noch nicht geladen
+      try {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+        const { data: { text } } = await tesseractWorker.recognize(blob);
+        // extrahiere erste große Ziffernfolge
+        const found = text.replace(/\s+/g, ' ').match(/(\d{2,})/); // mindestens 2 Ziffern
+        if (found){
+          showResult(found[1]);
+        } else {
+          overlay.textContent = 'Keine Zahl erkannt. Nochmals versuchen.';
+          log('OCR: kein Treffer. Rohtext: ' + text.trim().slice(0,200));
+        }
+      } catch (err){
+        console.error(err);
+        overlay.textContent = '';
+        log('OCR Fehler: ' + (err.message||err));
+      }
+    }
+
+    // Event-Listener
+    startBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    snapBtn.addEventListener('click', snapAndOCR);
+
+    // Seiten-Visibility tidy-up
+    document.addEventListener('visibilitychange', ()=>{
+      if (document.hidden) {
+        // kann Kamera pausieren, wenn gewünscht:
+        // stopCamera();
+      }
+    });
+
+    // Aufräumen beim Verlassen
+    window.addEventListener('beforeunload', ()=>{ stopCamera(); });
+
+    // Hinweise / Feature-Check beim Laden
+    (async function featureCheck(){
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        alert('getUserMedia wird von deinem Browser nicht unterstützt. Bitte modernen Browser (Chrome, Firefox, Safari) verwenden.');
+      }
+      await initBarcodeDetector();
+    })();
+
+  })();
+  </script>
+</body>
+</html>

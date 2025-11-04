@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tesseract.js OCR Test (Nur Zahlen)</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        text-align: center;
+        padding: 20px;
+        background: #f4f4f4;
+      }
+      /* 2. Video-Feed für die Kamera */
+      video {
+        width: 100%;
+        max-width: 640px;
+        border: 2px solid #333;
+        background: #000;
+      }
+      #status-box {
+        font-weight: bold;
+        font-size: 1.2em;
+        margin: 15px;
+        padding: 10px;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      }
+      #result {
+        font-family: monospace;
+        font-size: 1.5em;
+        color: #007bff;
+      }
+      button {
+        padding: 12px 20px;
+        font-size: 1em;
+        margin: 10px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tesseract.js OCR Test</h1>
+    <p>Richte die Kamera auf eine klar gedruckte Zahl (z.B. Inventarnummer).</p>
+
+    <video id="video-feed" autoplay playsinline></video>
+    <div id="status-box">Status: <span id="status">Warte auf Start...</span></div>
+    <h3>Ergebnis:</h3>
+    <pre><code id="result">-</code></pre>
+
+    <button id="btn-start">Scanner starten</button>
+    <button id="btn-stop" disabled>Scanner stoppen</button>
+
+    <canvas id="snapshot-canvas" style="display: none"></canvas>
+
+    <script>
+      const startButton = document.getElementById("btn-start");
+      const stopButton = document.getElementById("btn-stop");
+      const statusEl = document.getElementById("status");
+      const resultEl = document.getElementById("result");
+      const videoEl = document.getElementById("video-feed");
+      const canvasEl = document.getElementById("snapshot-canvas");
+
+      let stream = null;
+      let tesseractWorker = null;
+      let isScanning = false;
+      let recognitionInterval = null;
+
+      // --- Tesseract Worker Initialisierung ---
+      async function initializeTesseract() {
+        statusEl.textContent = "Lade Tesseract-Kern...";
+        tesseractWorker = await Tesseract.createWorker("eng", 1, {
+          logger: (m) => {
+            if (m.status === "recognizing text") {
+              statusEl.textContent = `Erkenne... (${Math.round(m.progress * 100)}%)`;
+            } else if (m.status === "loading language data") {
+              statusEl.textContent = "Lade Sprachmodell...";
+            } else {
+              console.log(m.status);
+            }
+          },
+        });
+
+        // 4. WICHTIG: Nur nach Zahlen suchen!
+        statusEl.textContent = "Setze Parameter (Nur Zahlen)...";
+        await tesseractWorker.setParameters({
+          tessedit_char_whitelist: "0123456789", // Nur diese Zeichen erlauben
+        });
+        statusEl.textContent = "Bereit. Kamera starten.";
+      }
+
+      // --- Kamera- und Scan-Logik ---
+      async function startScanner() {
+        try {
+          // 1. Tesseract laden (falls noch nicht geschehen)
+          if (!tesseractWorker) {
+            await initializeTesseract();
+          }
+
+          // 2. Kamera-Stream anfordern
+          statusEl.textContent = "Fordere Kamerazugriff an...";
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "environment", // Rückkamera
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+            audio: false,
+          });
+
+          videoEl.srcObject = stream;
+          videoEl.play();
+
+          // Warten bis Video spielt, um korrekte Dimensionen zu erhalten
+          videoEl.onloadedmetadata = () => {
+            canvasEl.width = videoEl.videoWidth;
+            canvasEl.height = videoEl.videoHeight;
+            isScanning = true;
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            statusEl.textContent = "Scanner aktiv. Suche nach Zahlen...";
+
+            // 3. Alle 1.5 Sekunden ein Bild erkennen
+            recognitionInterval = setInterval(recognizeFromVideo, 1500);
+          };
+        } catch (err) {
+          console.error("Fehler beim Starten:", err);
+          statusEl.textContent = `Fehler: ${err.message}`;
+        }
+      }
+
+      function stopScanner() {
+        if (recognitionInterval) {
+          clearInterval(recognitionInterval);
+          recognitionInterval = null;
+        }
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+          stream = null;
+        }
+        videoEl.srcObject = null;
+        isScanning = false;
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        statusEl.textContent = "Scanner gestoppt.";
+        resultEl.textContent = "-";
+      }
+
+      async function recognizeFromVideo() {
+        if (!isScanning || !tesseractWorker) return;
+
+        statusEl.textContent = "Mache Schnappschuss...";
+        const context = canvasEl.getContext("2d");
+        context.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+
+        // Canvas-Bild für Tesseract vorbereiten
+        const imageData = context.getImageData(
+          0,
+          0,
+          canvasEl.width,
+          canvasEl.height,
+        );
+
+        try {
+          const {
+            data: { text },
+          } = await tesseractWorker.recognize(imageData);
+
+          // Ergebnis bereinigen (Leerzeichen entfernen)
+          const cleanedText = text.replace(/\s/g, "");
+
+          if (cleanedText) {
+            resultEl.textContent = cleanedText;
+            // Optional: Scan stoppen bei erstem Fund
+            // stopScanner();
+          }
+          statusEl.textContent = "Scanner aktiv. Suche nach Zahlen...";
+        } catch (err) {
+          console.error("OCR Fehler:", err);
+          statusEl.textContent = "Fehler bei Erkennung.";
+        }
+      }
+
+      // --- Event Listeners ---
+      startButton.addEventListener("click", startScanner);
+      stopButton.addEventListener("click", stopScanner);
+
+      // Beim Schließen der Seite Worker beenden
+      window.addEventListener("beforeunload", async () => {
+        stopScanner();
+        if (tesseractWorker) {
+          await tesseractWorker.terminate();
+        }
+      });
+    </script>
+  </body>
+</html>
