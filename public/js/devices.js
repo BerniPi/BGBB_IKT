@@ -220,6 +220,10 @@ let categoryCache = []; // Kategorien für Filter
 // Initialisierung
 // ----------------------------------------------------
 document.addEventListener("DOMContentLoaded", async () => {
+
+  // HIER: Die Bedingung einfügen
+  if (document.getElementById('devices-table-body')) {
+
   await Promise.all([loadFilterOptions(), loadModels()]);
   bindFilterEvents();
   bindSortEvents();
@@ -249,6 +253,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   await loadDevices();
+  }
 });
 
 // ----------------------------------------------------

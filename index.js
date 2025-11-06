@@ -109,12 +109,15 @@ const renderPage = (page) => (req, res) => {
 app.get('/', (req, res) => res.redirect('/tasks'));
 app.get('/tasks', renderPage('tasks'));
 app.get('/maintenance', renderPage('maintenance'));
-app.get('/master-data', renderPage('master-data'));
 app.get('/devices', renderPage('devices'));
 app.get('/walkthrough', renderPage('walkthrough'));
 app.get('/devices/import', renderPage('import_devices'));
 app.get('/system-io', renderPage('system_io'));
 app.get('/users', renderPage('users'));
+app.get('/master-data/rooms', renderPage('master-data-rooms'));
+app.get('/master-data/models', renderPage('master-data-models'));
+app.get('/master-data/categories', renderPage('master-data-categories'));
+
 
 // Geschützte API Endpunkte
 const masterDataRouter = require('./routes/r_masterData');

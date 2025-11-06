@@ -16,8 +16,23 @@
                 </li>
                 <li class="nav-item">
 <a class="nav-link <%= page === 'maintenance' ? 'active' : '' %>" href="/maintenance"><i class="bi bi-tools me-1"></i> Wartung</a>                </li>
-                <li class="nav-item">
-                    <a class="nav-link <%= page === 'master-data' ? 'active' : '' %>" href="/master-data"><i class="bi bi-gear me-1"></i> Stammdaten</a>
+
+<%# --- NEU: Stammdaten Dropdown --- %>
+                <li class="nav-item dropdown">
+                   <a class="nav-link dropdown-toggle <%= page.startsWith('master-data-') ? 'active' : '' %>" href="#" id="navbarDropdownMasterData" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-gear me-1"></i> Stammdaten
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarDropdownMasterData">
+                        <li>
+                            <a class="dropdown-item <%= page === 'master-data-rooms' ? 'active' : '' %>" href="/master-data/rooms"><i class="bi bi-door-open-fill me-1"></i> Räume</a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item <%= page === 'master-data-models' ? 'active' : '' %>" href="/master-data/models"><i class="bi bi-laptop me-1"></i> Gerätemodelle</a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item <%= page === 'master-data-categories' ? 'active' : '' %>" href="/master-data/categories"><i class="bi bi-tags-fill me-1"></i> Gerätekategorien</a>
+                        </li>
+                    </ul>
                 </li>
 
                 <li class="nav-item" id="nav-users-link">

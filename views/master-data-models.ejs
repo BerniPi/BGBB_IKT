@@ -1,0 +1,111 @@
+<%- include('partials/header') %>
+<%- include('partials/navbar', { page: 'master-data-models' }) %>
+
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-laptop me-2"></i> Stammdaten: Gerätemodelle</h5>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modelModal">
+                <i class="bi bi-plus-lg me-1"></i> Neues Modell anlegen
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th data-sort="category_name" class="sortable-header">Kategorie</th>
+                            <th data-sort="manufacturer" class="sortable-header">Hersteller</th>
+                            <th data-sort="type" class="sortable-header">Type</th>
+                            <th data-sort="model_name" class="sortable-header">Modellname</th>
+                            <th data-sort="model_number" class="sortable-header">Modellnummer</th>
+                            <th data-sort="active_devices" class="sortable-header">Geräte (Aktiv/Gesamt)</th>
+                            <th data-sort="has_network" class="sortable-header">Netzwerk</th>
+                            <th data-sort="purchase_date" class="sortable-header">Kaufdatum</th>
+                            <th data-sort="price_cents" class="sortable-header">Preis (€)</th>
+                            <th data-sort="warranty_months" class="sortable-header">Garantie (Mon.)</th>
+                            <th data-sort="maintenance_interval_months" class="sortable-header">Wartung (Mon.)</th>
+                            <th style="width: 10%;">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="models-table-body">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modelModal" tabindex="-1" aria-labelledby="modelModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <form id="modelForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modelModalLabel">Neues Gerätemodell anlegen</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <%# Erste Zeile %>
+                        <div class="col-md-3">
+                            <label class="form-label">Kategorie*</label>
+                            <select id="model-category_id" class="form-select" required></select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Hersteller</label>
+                            <input type="text" id="model-manufacturer" class="form-control" placeholder="z.B. HP">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Type</label>
+                            <input type="text" id="model-type" class="form-control" placeholder="z.B. Laptop">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Modellname</label>
+                            <input type="text" id="model-model_name" class="form-control" placeholder="z.B. EliteBook 840">
+                        </div>
+                        
+                        <%# Zweite Zeile %>
+                        <div class="col-md-3">
+                            <label class="form-label">Modellnummer*</label>
+                            <input type="text" id="model-model_number" class="form-control" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Netzwerk</label>
+                            <select id="model-has_network" class="form-select">
+                                <option value="0">Nein</option><option value="1">Ja</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Kaufdatum</label>
+                            <input type="text" id="model-purchase_date" class="form-control" placeholder="tt.mm.jjjj">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Preis (€)</label>
+                            <input type="number" step="0.01" min="0" id="model-price" class="form-control" placeholder="z.B. 1499.99">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Garantie (Mon.)</label>
+                            <input type="number" min="0" id="model-warranty_months" class="form-control" placeholder="z.B. 24">
+                        </div>
+
+                        <%# Dritte Zeile %>
+                        <div class="col-md-3">
+                            <label class="form-label">Wartung (Mon.)</label>
+                            <input type="number" min="0" id="model-maintenance_interval_months" class="form-control" placeholder="z.B. 12">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-primary">Speichern</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<%- include('partials/footer') %>
+<%# Wichtig: devices.js für Hilfsfunktionen (cents <-> euros, apiFetch) laden %>
+<script src="/js/devices.js"></script>
+<script src="/js/master-data-common.js"></script>
+<script src="/js/master-data-models.js"></script>
