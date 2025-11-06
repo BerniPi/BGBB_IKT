@@ -143,6 +143,7 @@ router.get("/", (req, res) => {
     ip_address: "d.ip_address",
     room_name: "r.room_name",
     status: "d.status",
+    last_inspected: "d.last_inspected",
   };
   const orderBy = sortWhitelist[sort] || "c.category_name";
 

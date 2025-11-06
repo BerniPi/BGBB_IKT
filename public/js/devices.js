@@ -53,21 +53,52 @@ function escapeAttr(s) {
 function eurosToCents(eurosStr) {
   if (eurosStr === null || eurosStr === undefined || eurosStr === "")
     return null;
-  // Entferne Tausenderpunkte und wandle Komma zu Punkt
-  const normalized = eurosStr
-    .toString()
-    .trim()
-    .replace(/\./g, "")
-    .replace(",", ".");
+
+  const s = eurosStr.toString().trim();
+  let normalized;
+
+  if (s.includes(',')) {
+    // Annahme: Deutsches Format ("1.461,22" oder "1461,22")
+    // 1. Tausenderpunkte entfernen
+    // 2. Komma durch Punkt ersetzen
+    normalized = s.replace(/\./g, "").replace(",", ".");
+  } else {
+    // Annahme: US/Code-Format ("1461.22" oder "1461")
+    // (Keine Kommas vorhanden, Punkt ist das Dezimaltrennzeichen)
+    // Wir müssen nichts ersetzen.
+    normalized = s;
+  }
+
   const n = Number(normalized);
   if (Number.isNaN(n)) return null;
   return Math.round(n * 100);
 }
+
 function centsToEurosStr(cents) {
   if (cents === null || cents === undefined) return "";
   const n = Number(cents);
   if (Number.isNaN(n)) return "";
   return (n / 100).toFixed(2);
+}
+
+/**
+ * NEU: Hilfsfunktion zur Formatierung von ISO-Daten (YYYY-MM-DD)
+ * @param {string} isoDate - z.B. "2025-11-05"
+ * @returns {string} - z.B. "05.11.2025" oder ""
+ */
+function formatDate(isoDate) {
+  if (!isoDate || !String(isoDate).includes("-")) return "";
+  
+  // Schneidet Zeit (z.B. "T10:00:00") ab, falls vorhanden
+  const datePart = isoDate.slice(0, 10); 
+  const parts = datePart.split('-'); // [YYYY, MM, DD]
+
+  if (parts.length !== 3 || parts[0].length < 4) return ""; // Ungültig
+  
+  const [y, m, d] = parts;
+  if (!y || !m || !d) return "";
+
+  return `${d}.${m}.${y}`;
 }
 
 /**
@@ -645,6 +676,8 @@ function renderDeviceRow(d) {
     statusBadges[d.status] ||
     `<span class="badge text-bg-light text-dark">${d.status || "Inaktiv"}</span>`;
 
+const inspectedDate = formatDate(d.last_inspected);
+
   const json = encodeURIComponent(JSON.stringify(d));
   return `
   <tr data-id="${d.device_id}" class="device-row">
@@ -658,6 +691,7 @@ function renderDeviceRow(d) {
       <td>${escapeHtml(ip)}</td>
       <td>${escapeHtml(room)}</td>
       <td>${statusBadge}</td>
+      <td>${escapeHtml(inspectedDate)}</td> <td class="text-nowrap">
       <td class="text-nowrap">
         <button class="btn btn-sm btn-outline-secondary me-1" onclick="openEditModalFromList('${json}')"><i class="bi bi-pencil"></i></button>
         <button class="btn btn-sm btn-outline-danger" onclick="deleteDevice(${d.device_id})"><i class="bi bi-trash"></i></button>
@@ -818,15 +852,35 @@ let _modelSelectPopulated = false;
 async function ensureModelSelectPopulated() {
   const sel = document.getElementById("device-model_id");
   if (!sel || _modelSelectPopulated) return;
-  const models = Object.values(modelCache);
+
+  const models = Object.values(modelCache); // Alle Modelle aus dem Cache holen
+
+  // === NEU: Sortierung ===
+  // Sortiere: 1. Nach Kategorie, 2. Nach Modellname (oder Nummer)
+  models.sort((a, b) => {
+    const catA = a.category_name || "";
+    const catB = b.category_name || "";
+    // Fallback-Logik (Name oder Nummer) muss der Label-Logik entsprechen
+    const nameA = a.model_name || a.model_number || "";
+    const nameB = b.model_name || b.model_number || "";
+
+    // Vergleiche zuerst Kategorie. Wenn sie gleich sind (Ergebnis 0),
+    // verwende den Vergleich des Namens.
+    return catA.localeCompare(catB) || nameA.localeCompare(nameB);
+  });
+  // === ENDE Sortierung ===
+
+  // Baue das HTML für die <option>-Elemente
   sel.innerHTML =
     '<option value="">Bitte Modell wählen…</option>' +
     models
       .map((m) => {
+        // Label-Logik (unverändert)
         const label = `[${m.category_name || "-"}] ${m.model_name || m.model_number}`;
         return `<option value="${m.model_id}">${escapeHtml(label)}</option>`;
       })
       .join("");
+  
   _modelSelectPopulated = true;
 }
 
