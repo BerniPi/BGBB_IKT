@@ -13,6 +13,63 @@ if (typeof apiFetch === 'undefined' || typeof escapeHtml === 'undefined' || type
 // NEU: escapeAttr definieren, das in Ihrer renderRoomsTable-Funktion verwendet wurde, aber fehlte.
 window.escapeAttr = s => String(s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+// *** NEU: HILFSFUNKTIONEN FÜR DATUMSKONVERTIERUNG ***
+
+/**
+ * Konvertiert ein ISO-Datum (YYYY-MM-DD) in das deutsche Format (tt.mm.jjjj).
+ * @param {string | null} isoDate - Das Datum im ISO-Format.
+ * @returns {string} Das Datum im Format tt.mm.jjjj oder ein leerer String.
+ */
+window.formatDateToDDMMYYYY = function(isoDate) {
+    if (!isoDate) return ''; // Leeren String statt null, da es in der Tabelle/im Input angezeigt wird
+    const datePart = String(isoDate).split('T')[0];
+    const parts = datePart.split('-');
+    if (parts.length === 3 && parts[0].length === 4) { // [YYYY, MM, DD]
+        return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    }
+    return ''; // Fallback bei unerwartetem Format
+}
+
+/**
+ * Konvertiert ein deutsches Datum (tt.mm.jjjj) in das ISO-Format (YYYY-MM-DD).
+ * @param {string | null} deDate - Das Datum im Format tt.mm.jjjj.
+ * @returns {string | null} Das Datum im ISO-Format oder null bei Ungültigkeit.
+ */
+window.formatDateToYYYYMMDD = function(deDate) {
+    if (!deDate || String(deDate).trim() === '') return null;
+    
+    const parts = String(deDate).trim().split('.');
+    
+    if (parts.length === 3) {
+         // Erlaube 1.2.2025 -> 01.02.2025
+         const d = parts[0].padStart(2, '0');
+         const m = parts[1].padStart(2, '0');
+         const y = parts[2];
+         
+         // Einfache Längenprüfung für das Jahr
+         if (y.length !== 4) {
+             console.warn(`Ungültiges Datumsformat (Jahr): ${deDate}`);
+             return null;
+         }
+         
+         // Grundlegende Datumsvalidierung
+         const isoStr = `${y}-${m}-${d}`;
+         const date = new Date(isoStr);
+         
+         // Prüft ob das Datum gültig ist (z.B. 30.02. ist ungültig)
+         // date.toISOString().startsWith(isoStr) prüft, ob der Tag gültig ist
+         if (date && date.toISOString().startsWith(isoStr)) {
+             return isoStr; // Gültiges ISO Format
+         } else {
+             console.warn(`Ungültiges Datum (z.B. 30.02.2025): ${deDate}`);
+             return null;
+         }
+    }
+    console.warn(`Ungültiges Datumsformat (Struktur): ${deDate}`);
+    return null; // Ungültiges Format
+}
+// *** ENDE NEUE HILFSFUNKTIONEN ***
+
 document.addEventListener('DOMContentLoaded', () => {
     // Event Listeners (unverändert)
     document.querySelector('#collapseRooms')?.addEventListener('show.bs.collapse', () => loadMasterData('rooms'));
@@ -105,7 +162,7 @@ function renderModelsTable(data) {
             <td>${createEditableCell('models', item.model_id, 'model_number', item.model_number)}</td>
             <td>${item.active_devices} (${item.total_devices})</td>
             <td>${Number(item.has_network) ? '<i class="bi bi-wifi text-success" title="Netzwerkfähig"></i>' : '<i class="bi bi-wifi-off text-muted" title="Nicht Netzwerkfähig"></i>'}</td>
-            <td>${escapeHtml(item.purchase_date || '-')}</td>  
+            <td>${escapeHtml(formatDateToDDMMYYYY(item.purchase_date) || '-')}</td>
             <td>${escapeHtml(centsToEurosStr(item.price_cents) || '-')}</td> 
             <td>${escapeHtml(item.warranty_months || '-')}</td> 
             <td>${createEditableCell('models', item.model_id, 'maintenance_interval_months', item.maintenance_interval_months)}</td>
@@ -288,8 +345,11 @@ function editMasterData(resourceName, item) {
     } else if (resourceName === 'models' && key === 'price_cents') {
       const priceInput = document.getElementById('model-price');
       if (priceInput) priceInput.value = centsToEurosStr(item[key]);
-    } else if (input.type === 'date') {
-      input.value = item[key] ? String(item[key]).slice(0, 10) : '';
+    
+    // *** ANGEPASST: Nutzt Datumsformatierung für das Textfeld ***
+    } else if (resourceName === 'models' && key === 'purchase_date') {
+      input.value = formatDateToDDMMYYYY(item[key]); // Formatierung anwenden
+    
     } else {
       input.value = item[key] ?? '';
     }
@@ -348,18 +408,28 @@ async function handleFormSubmit(event, resourceName, pkField) {
         const key = input.id.replace(`${formPrefix}-`, '');
 
         if (input.type === 'checkbox') {
-            body[key] = input.checked ? 1 : 0;
-        // *** NEU: Spezielle Behandlung für Preis (Euro String -> Cents) ***
-        } else if (resourceName === 'models' && input.id === 'model-price') {
-             body['price_cents'] = eurosToCents(input.value); // Speichere als price_cents
-        // *** ENDE NEU ***
-        } else if (input.type === 'number') {
-            // Stelle sicher, dass leere Zahlenfelder als null gesendet werden
-             body[key] = input.value === '' ? null : Number(input.value);
-        } else {
-             body[key] = input.value.trim() === '' ? null : input.value.trim(); // Leere Strings als null
-        }
-    });
+                body[key] = input.checked ? 1 : 0;
+            // *** NEU: Spezielle Behandlung für Preis (Euro String -> Cents) ***
+            } else if (resourceName === 'models' && input.id === 'model-price') {
+                body['price_cents'] = eurosToCents(input.value); // Speichere als price_cents
+            
+            // *** NEU: Datums-Konvertierung (tt.mm.jjjj -> YYYY-MM-DD) ***
+            } else if (resourceName === 'models' && key === 'purchase_date') { 
+                 const isoDate = formatDateToYYYYMMDD(input.value);
+                 if (input.value.trim() !== '' && isoDate === null) {
+                     // Zeigt einen Fehler, wenn das Format ungültig ist, aber nicht leer war
+                     alert(`Das Datum "${input.value}" hat ein ungültiges Format oder ist ungültig. Bitte tt.mm.jjjj verwenden.`);
+                     throw new Error("Invalid date format"); // Verhindert das Senden
+                 }
+                 body[key] = isoDate; // Sende null oder YYYY-MM-DD
+            
+            } else if (input.type === 'number') {
+                // Stelle sicher, dass leere Zahlenfelder als null gesendet werden
+                body[key] = input.value === '' ? null : Number(input.value);
+            } else {
+                body[key] = input.value.trim() === '' ? null : input.value.trim(); // Leere Strings als null
+            }
+        });
 
      // *** NEU: Entferne das temporäre 'price'-Feld, falls es existiert ***
      if (body.hasOwnProperty('price')) {
