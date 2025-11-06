@@ -858,8 +858,13 @@ async function openEditModal(deviceId, rowFromList = null) {
     updateNetworkFieldVisibility(); // Rufe dies nach dem Setzen der model_id auf
 
     // Netzwerkdaten
-    setValue("device-mac_address", device.mac_address || "");
-    setValue("device-ip_address", device.ip_address || "");
+setValue("device-mac_address", device.mac_address || "");
+
+// NEU: Setze Standard-IP-Präfix, WENN keine IP vorhanden ist
+// (gilt für neue UND bestehende Geräte ohne IP)
+const currentIp = device.ip_address || "192.168.";
+setValue("device-ip_address", currentIp);
+
 
     // Datumsfelder (Status)
     setValue("device-added_at", device.added_at || "");
@@ -867,16 +872,20 @@ async function openEditModal(deviceId, rowFromList = null) {
     setValue("device-last_cleaned", device.last_cleaned || "");
     setValue("device-last_inspected", device.last_inspected || "");
 
-    // Raum-Historie + Auswahl
+// Raum-Historie + Auswahl
     await populateRoomHistoryRoomSelect(); // Sicherstellen, dass Räume geladen sind
+
     if (device.device_id) {
+      // --- BESTEHENDES GERÄT ---
+      show("room-history-container"); // Zeige den ganzen Block an
       await loadRoomHistory(device.device_id);
     } else {
-      // Bei neuem Gerät: Historie leeren
+      // --- NEUES GERÄT ---
+      hide("room-history-container"); // Verstecke den ganzen Block
+
+      // (Optional, aber sauber): Den Tabelleninhalt trotzdem leeren
       const historyBody = document.getElementById("room-history-body");
-      if (historyBody)
-        historyBody.innerHTML =
-          '<tr><td colspan="5" class="text-center text-muted">Für neue Geräte erst speichern.</td></tr>';
+      if (historyBody) historyBody.innerHTML = "";
     }
 
     // Modal öffnen
