@@ -209,7 +209,7 @@ if (typeof apiFetch === "undefined") {
 // ... (Rest von public/js/devices.js bleibt gleich) ...
 // ----------------------------------------------------
 let __sort = { col: "category_name", dir: "asc" };
-let __filters = { category_id: "", model_id: "", room_id: "", status: "active" };
+let __filters = { category_id: "", model_id: "", room_id: "", status: "active", q: "" };
 
 let devicesCache = []; // aktuell geladene Geräte
 let modelCache = {}; // model_id -> Model (inkl. has_network)
@@ -230,6 +230,39 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindFormSubmit();
   bindRoomHistoryEvents();
   bindModelChangeForNetworkFields();
+
+// --- NEU: Globale Suche ---
+  const searchInput = document.getElementById("filter-search-q");
+  const searchClearBtn = document.getElementById("filter-search-clear-btn");
+
+  if (searchInput && searchClearBtn) {
+    // Debounce-Funktion (verhindert API-Aufrufe bei jedem Tastendruck)
+    let debounceTimer;
+    const debounce = (func, delay) => {
+      return (...args) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => func.apply(this, args), delay);
+      };
+    };
+
+    // Debounced Such-Handler
+    const handleSearch = debounce(() => {
+      __filters.q = searchInput.value;
+      loadDevices();
+    }, 300); // 300ms Verzögerung
+
+    // Event-Listener
+    searchInput.addEventListener("input", handleSearch);
+
+    searchClearBtn.addEventListener("click", () => {
+      searchInput.value = "";
+      __filters.q = "";
+      loadDevices();
+      searchInput.focus();
+    });
+  }
+  
+
 
   // Button "Neues Gerät"
   const btnNew = document.getElementById("btnNewDevice");
@@ -446,6 +479,7 @@ async function loadDevices() {
   if (__filters.model_id) params.set("model_id", __filters.model_id);
   if (__filters.room_id) params.set("room_id", __filters.room_id);
   if (__filters.status) params.set("status", __filters.status);
+  if (__filters.q) params.set("q", __filters.q); // <-- DIESE ZEILE HINZUFÜGEN
   if (__sort.col) params.set("sort", __sort.col);
   if (__sort.dir) params.set("dir", __sort.dir);
 

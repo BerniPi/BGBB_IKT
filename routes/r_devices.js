@@ -123,11 +123,27 @@ router.get("/", (req, res) => {
         (
           d.serial_number LIKE ? OR
           d.inventory_number LIKE ? OR
-          m.model_number LIKE ?
+          m.model_number LIKE ? OR
+          m.model_name LIKE ? OR
+          d.hostname LIKE ? OR
+          d.mac_address LIKE ? OR
+          d.ip_address LIKE ? OR
+          r.room_name LIKE ? OR
+          r.room_number LIKE ?
         )
       `);
     const searchTerm = `%${q}%`;
-    params.push(searchTerm, searchTerm, searchTerm);
+    params.push(
+      searchTerm, // serial_number
+      searchTerm, // inventory_number
+      searchTerm, // model_number
+      searchTerm, // model_name (NEU)
+      searchTerm, // hostname (NEU)
+      searchTerm, // mac_address (NEU)
+      searchTerm, // ip_address (NEU)
+      searchTerm, // room_name (NEU)
+      searchTerm  // room_number (NEU)
+    );
   }
   // === ENDE NEU ===
   //
