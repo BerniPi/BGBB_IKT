@@ -730,7 +730,8 @@ const inspectedDate = formatDate(d.last_inspected);
       <td>${escapeHtml(ip)}</td>
       <td>${escapeHtml(room)}</td>
       <td>${statusBadge}</td>
-      <td>${escapeHtml(inspectedDate)}</td> <td class="text-nowrap">
+      <td>${escapeHtml(inspectedDate)}</td>
+      
       <td class="text-nowrap">
         <button class="btn btn-sm btn-outline-secondary me-1" onclick="openEditModalFromList('${json}')"><i class="bi bi-pencil"></i></button>
         <button class="btn btn-sm btn-outline-danger" onclick="deleteDevice(${d.device_id})"><i class="bi bi-trash"></i></button>
@@ -1008,7 +1009,6 @@ async function loadRoomHistory(deviceId) {
           <td><input type="date" class="form-control rh-to" value="${escapeAttr((h.to_date || "").slice(0, 10))}"></td>
           <td>${roomSelectHtml}</td> <td><input type="text" class="form-control rh-notes" value="${escapeAttr(h.notes || "")}"></td>
           <td class="text-nowrap">
-            <button type="button" class="btn btn-sm btn-outline-primary rh-save">Speichern</button>
             <button type="button" class="btn btn-sm btn-outline-danger rh-del ms-1">Löschen</button>
           </td>
         </tr>
@@ -1020,34 +1020,7 @@ async function loadRoomHistory(deviceId) {
 // devices.js
 
 function bindRoomHistoryEvents() {
-  // Save bestehender Eintrag
-  document.addEventListener("click", async (e) => {
-    const btn = e.target.closest(".rh-save");
-    if (!btn) return;
-    const tr = btn.closest("tr");
-    const deviceId = getValue("device-device_id");
-    const historyId = tr.getAttribute("data-history-id");
-    const from = tr.querySelector(".rh-from").value || null;
-    const to = tr.querySelector(".rh-to").value || null;
-    const notes = tr.querySelector(".rh-notes").value || null;
-
-    // === GEÄNDERT: Wert aus dem Dropdown lesen ===
-    const room_id = tr.querySelector(".rh-room-select").value || null;
-
-    try {
-      await apiFetch(`/api/devices/${deviceId}/rooms-history/${historyId}`, {
-        method: "PUT",
-        body: JSON.stringify({ room_id, from_date: from, to_date: to, notes }),
-      });
-      // Wir laden die Historie neu, um die Sortierung (falls sie sich ändert)
-      // und die Raumnamen korrekt anzuzeigen.
-      await loadRoomHistory(deviceId);
-      await loadDevices(); // Auch die Geräteliste neu laden, falls Raumänderung sichtbar ist
-    } catch (err) {
-      alert(err.message || "Speichern fehlgeschlagen.");
-    }
-  });
-
+  
   // Delete bestehender Eintrag (Diese Funktion war bei dir schon vorhanden)
   document.addEventListener("click", async (e) => {
     const btn = e.target.closest(".rh-del");
@@ -1104,6 +1077,53 @@ function bindRoomHistoryEvents() {
   }
 }
 
+/**
+ * NEU: Speichert alle geänderten Raum-Historie-Zeilen auf einmal.
+ * Wird vom globalen Modal-Speichern-Knopf aufgerufen.
+ */
+async function saveRoomHistoryChanges(deviceId) {
+  const tbody = document.getElementById("room-history-body");
+  if (!tbody) return;
+
+  const rows = tbody.querySelectorAll("tr[data-history-id]");
+  if (!rows.length) return; // Nichts zu speichern
+
+  const updatePromises = [];
+
+  for (const tr of rows) {
+    const historyId = tr.getAttribute("data-history-id");
+    
+    // Daten aus den <input> und <select> der Zeile lesen
+    const from = tr.querySelector(".rh-from").value || null;
+    const to = tr.querySelector(".rh-to").value || null;
+    const notes = tr.querySelector(".rh-notes").value || null;
+    const room_id = tr.querySelector(".rh-room-select").value || null;
+
+    const payload = {
+      room_id: room_id,
+      from_date: from,
+      to_date: to,
+      notes: notes,
+    };
+
+    // Erstelle ein Promise für jedes Update
+    const promise = apiFetch(`/api/devices/${deviceId}/rooms-history/${historyId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    
+    updatePromises.push(promise);
+  }
+
+  // Warte, bis alle (parallelen) Updates abgeschlossen sind
+  try {
+    await Promise.all(updatePromises);
+  } catch (err) {
+    // Wirf den Fehler weiter, damit die Haupt-Submit-Funktion ihn fangen kann
+    throw new Error(`Fehler beim Speichern der Raum-Historie: ${err.message}`);
+  }
+}
+
 // ----------------------------------------------------
 // Formular (Neu / Bearbeiten) speichern & löschen
 // ----------------------------------------------------
@@ -1129,6 +1149,7 @@ async function onSubmitDeviceForm(e) {
 
     // Netzwerk
     mac_address: window.formatMacAddress(getValue("device-mac_address")),
+    ip_address: getValue("device-ip_address") || null, // IP-Adresse wird jetzt auch gespeichert
 
     // Zeiten
     added_at: getValue("device-added_at") || null,
@@ -1146,25 +1167,39 @@ async function onSubmitDeviceForm(e) {
   };
 
   try {
+    let currentDeviceId = deviceId;
+
     if (isUpdate) {
-      await apiFetch(`/api/devices/${deviceId}`, {
+      // 1. Hauptgerät aktualisieren
+      await apiFetch(`/api/devices/${currentDeviceId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
     } else {
+      // 1. Hauptgerät neu erstellen
       const res = await apiFetch(`/api/devices`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      // Neu angelegte ID setzen, damit im selben Dialog Historie hinzugefügt werden kann
+      
+      // Neu angelegte ID setzen, damit Historie hinzugefügt werden kann
       if (res && res.device_id) {
-        setValue("device-device_id", res.device_id);
-        // kurze Verzögerung, damit DOM-Updates sicher sind (rein defensiv)
-        await new Promise((r) => setTimeout(r, 50));
-        await loadRoomHistory(res.device_id);
+        currentDeviceId = res.device_id; // Wichtig für den nächsten Schritt
+        setValue("device-device_id", currentDeviceId);
+        
+        // Zeige jetzt den Historie-Block an, falls der User
+        // direkt im Anschluss (ohne Schließen) Historie hinzufügen will
+        show("room-history-container"); 
       }
     }
 
+    // 2. === NEU: Raum-Historie speichern ===
+    //    (Nur wenn wir ein Gerät bearbeiten, da bei "Neu" die Tabelle leer ist)
+    if (isUpdate && currentDeviceId) {
+      await saveRoomHistoryChanges(currentDeviceId);
+    }
+    // (Der "rh-add" Knopf funktioniert weiterhin separat und sofort)
+    
     // Liste neu laden
     await loadDevices();
     closeDeviceModal();

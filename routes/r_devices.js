@@ -151,12 +151,13 @@ router.get("/", (req, res) => {
   const sortDir = dir === "desc" ? "DESC" : "ASC";
   const sortWhitelist = {
     category_name: "c.category_name",
-    model_number: "m.model_name",
+    model_name: "m.model_name", // KORRIGIERT (war 'model_number')
     hostname: "d.hostname",
     serial_number: "d.serial_number",
     inventory_number: "d.inventory_number",
     mac_address: "d.mac_address",
     ip_address: "d.ip_address",
+    room_number: "r.room_number", // HINZUGEFÜGT
     room_name: "r.room_name",
     status: "d.status",
     last_inspected: "d.last_inspected",
