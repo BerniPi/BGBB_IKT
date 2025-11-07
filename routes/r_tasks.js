@@ -5,7 +5,7 @@ const router = express.Router();
 // GET all tasks with filters
 router.get("/", (req, res) => {
   let query = `
-        SELECT t.*, r.room_name
+        SELECT t.*, r.room_name, r.room_number
         FROM tasks t
         LEFT JOIN rooms r ON t.room_id = r.room_id
         WHERE 1=1`;
@@ -105,6 +105,7 @@ router.get("/due-maintenance", (req, res) => {
         d.last_inspected,
         m.model_name,
         m.maintenance_interval_months,
+        r.room_id,
         r.room_name,
         r.room_number,
         CASE

@@ -94,7 +94,7 @@ function centsToEurosStr(cents) {
 }
 
 /**
- * NEU: Hilfsfunktion zur Formatierung von ISO-Daten (YYYY-MM-DD)
+ *  Hilfsfunktion zur Formatierung von ISO-Daten (YYYY-MM-DD)
  * @param {string} isoDate - z.B. "2025-11-05"
  * @returns {string} - z.B. "05.11.2025" oder ""
  */
@@ -243,7 +243,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindRoomHistoryEvents();
   bindModelChangeForNetworkFields();
 
-// --- NEU: Globale Suche ---
+// ---  Globale Suche ---
   const searchInput = document.getElementById("filter-search-q");
   const searchClearBtn = document.getElementById("filter-search-clear-btn");
 
@@ -439,7 +439,7 @@ function bindSortEvents() {
   });
 }
 /**
- * NEU: Hilfsfunktion zum Setzen der CSS-Klassen für Sortier-Pfeile
+ *  Hilfsfunktion zum Setzen der CSS-Klassen für Sortier-Pfeile
  */
 function updateSortIndicators() {
   const table = document.querySelector("#devices-table-body").closest('table');
@@ -871,7 +871,7 @@ async function openEditModal(deviceId, rowFromList = null) {
     // Netzwerkdaten
 setValue("device-mac_address", device.mac_address || "");
 
-// NEU: Setze Standard-IP-Präfix, WENN keine IP vorhanden ist
+//  Setze Standard-IP-Präfix, WENN keine IP vorhanden ist
 // (gilt für neue UND bestehende Geräte ohne IP)
 const currentIp = device.ip_address || "192.168.";
 setValue("device-ip_address", currentIp);
@@ -914,7 +914,7 @@ async function ensureModelSelectPopulated() {
 
   const models = Object.values(modelCache); // Alle Modelle aus dem Cache holen
 
-  // === NEU: Sortierung ===
+  // ===  Sortierung ===
   // Sortiere: 1. Nach Kategorie, 2. Nach Modellname (oder Nummer)
   models.sort((a, b) => {
     const catA = a.category_name || "";
@@ -997,7 +997,7 @@ async function loadRoomHistory(deviceId) {
   }
   tbody.innerHTML = rows
     .map((h) => {
-      // === NEU: Raum-Dropdown generieren ===
+      // ===  Raum-Dropdown generieren ===
       const roomSelectHtml = `
         <select class="form-select form-select-sm rh-room-select">
           ${roomCache
@@ -1088,7 +1088,7 @@ function bindRoomHistoryEvents() {
 }
 
 /**
- * NEU: Speichert alle geänderten Raum-Historie-Zeilen auf einmal.
+ *  Speichert alle geänderten Raum-Historie-Zeilen auf einmal.
  * Wird vom globalen Modal-Speichern-Knopf aufgerufen.
  */
 async function saveRoomHistoryChanges(deviceId) {
@@ -1238,7 +1238,7 @@ async function onSubmitDeviceForm(e) {
       }
     }
 
-    // 2. === NEU: Raum-Historie speichern ===
+    // 2. ===  Raum-Historie speichern ===
     //    (Nur wenn wir ein Gerät bearbeiten, da bei "Neu" die Tabelle leer ist)
     if (isUpdate && currentDeviceId) {
       await saveRoomHistoryChanges(currentDeviceId);

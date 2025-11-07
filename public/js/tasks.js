@@ -19,7 +19,7 @@ if (typeof escapeHtml === "undefined") {
 let completeTaskModalInstance = null;
 let taskModalInstance = null;
 
-// NEU: Globale Variablen für die Sortierung
+//  Globale Variablen für die Sortierung
 let currentSortColumn = "date";
 let currentSortOrder = "desc";
 
@@ -75,7 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
 
-  // NEU: Listener für die WARTUNGS-Taskliste
+  //  Listener für die WARTUNGS-Taskliste
   document.querySelector("#maintenance-tasks-table-body").closest('table').querySelectorAll("th.sortable-header").forEach((header) => {
     header.addEventListener("click", () => {
       const newSortColumn = header.dataset.sort;
@@ -123,7 +123,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // NEU: Submit-Handler für das "Abschließen"-Modal
+  //  Submit-Handler für das "Abschließen"-Modal
   document
     .getElementById("completeTaskForm")
     .addEventListener("submit", handleCompleteTaskSubmit);
@@ -145,7 +145,7 @@ const taskPriorityBadges = {
 };
 
 async function loadTasks() {
-  // NEU: Sortier-Indikatoren (Pfeile) in der Tabelle aktualisieren
+  // Sortier-Indikatoren (Pfeile) in der Tabelle aktualisieren
   updateSortIndicators();
 
   const params = new URLSearchParams();
@@ -158,7 +158,7 @@ async function loadTasks() {
   if (priority) params.append("priority", priority);
   if (searchTerm) params.append("q", searchTerm);
 
-  // NEU: Sortierparameter zur API-Anfrage hinzufügen
+  // Sortierparameter zur API-Anfrage hinzufügen
   if (currentSortColumn) params.append("sort", currentSortColumn);
   if (currentSortOrder) params.append("order", currentSortOrder);
 
@@ -177,8 +177,17 @@ async function loadTasks() {
 
     tbody.innerHTML = tasks
       .map((task) => {
-        // NEU: Daten für das "Abschließen"-Modal vorbereiten
+        // Daten für das "Abschließen"-Modal vorbereiten
         const taskTitleEscaped = escapeHtml(task.task);
+
+        // Raumformatierung (Raumnummer (Raumname))
+        let roomDisplay = "-";
+        if (task.room_id) {
+            const roomName = escapeHtml(task.room_name) || `Raum ${task.room_id}`;
+            const roomNum = escapeHtml(task.room_number);
+            // Zeige "Nummer (Name)" an, wenn Nummer vorhanden, sonst nur Name
+            roomDisplay = roomNum ? `${roomNum} (${roomName})` : roomName;
+        }
 
         return `
                             <tr>
@@ -187,7 +196,7 @@ async function loadTasks() {
                                 <td>${taskPriorityBadges[task.priority] || task.priority}</td>
                                 <td>${escapeHtml(task.category)}</td>
                                 <td>${escapeHtml(task.task)}<br><small class="text-muted">${escapeHtml(task.notes)}</small></td>
-                                <td>${escapeHtml(task.room_name) || "-"}</td>
+                                <td>${roomDisplay}</td>
                                 <td>${escapeHtml(task.assigned_to) || "-"}</td>
                                 <td class="text-nowrap">
                                     ${
@@ -251,21 +260,29 @@ async function deleteTask(id) {
     alert("Löschen fehlgeschlagen!");
   }
 }
-
 async function populateRoomsSelect() {
   try {
     const rooms = await apiFetch("/api/master-data/rooms");
-    const select = document.getElementById("task-room_id");
+    const select = document.getElementById("task-room_id"); 
     select.innerHTML = '<option value="">Kein Raum</option>';
-    rooms.forEach((room) => {
-      select.innerHTML += `<option value="${room.room_id}">${escapeHtml(room.room_name)} (${escapeHtml(room.room_number)})</option>`;
-    });
+    
+    // Sortieren und Formatieren für "Nummer (Name)"
+    rooms
+      .sort((a, b) => (a.room_number || "").localeCompare(b.room_number || ""))
+      .forEach((room) => {
+        const roomName = escapeHtml(room.room_name) || `Raum ${room.room_id}`;
+        const roomNum = escapeHtml(room.room_number);
+        // Label im Format "Nummer (Name)" oder nur "Name"
+        const label = roomNum ? `${roomNum} (${roomName})` : roomName;
+        select.innerHTML += `<option value="${room.room_id}">${label}</option>`;
+      });
+
   } catch (error) {
     console.error("Fehler beim Laden der Räume:", error);
   }
 }
 
-// NEU: Hilfsfunktion zum Setzen der CSS-Klassen für Sortier-Pfeile
+//  Hilfsfunktion zum Setzen der CSS-Klassen für Sortier-Pfeile
 function updateSortIndicators() {
   // KORREKTUR: Nur die Header der HAUPT-Tabelle auswählen
   const table = document.querySelector("#tasks-table-body").closest('table');
@@ -453,7 +470,7 @@ async function handleCompleteTaskSubmit(event) {
 // -----------------------------------------------------------------
 
 /**
- * NEU: Hilfsfunktion zum Setzen der CSS-Klassen für Wartungs-Sortier-Pfeile
+ *  Hilfsfunktion zum Setzen der CSS-Klassen für Wartungs-Sortier-Pfeile
  */
 function updateMaintSortIndicators() {
   // Wichtig: Nur die Header der Wartungstabelle auswählen
@@ -475,7 +492,7 @@ function updateMaintSortIndicators() {
  * Lädt die Liste der fälligen Wartungen von der neuen API-Route.
  */
 async function loadMaintenanceTasks() {
-  updateMaintSortIndicators(); // <-- NEU: Pfeile aktualisieren
+  updateMaintSortIndicators(); 
 
     const tbody = document.getElementById("maintenance-tasks-table-body");
     const countBadge = document.getElementById("maintenance-task-count");
@@ -483,7 +500,7 @@ async function loadMaintenanceTasks() {
 
     tbody.innerHTML = '<tr><td colspan="7" class="text-center">Lade fällige Wartungen...</td></tr>';
     
-    // NEU: Sortierparameter zur URL hinzufügen
+    //  Sortierparameter zur URL hinzufügen
     const params = new URLSearchParams();
     params.append("sort", maintSortColumn);
     params.append("order", maintSortOrder);
@@ -517,10 +534,10 @@ async function loadMaintenanceTasks() {
 function renderMaintenanceTaskRow(task) {
     const deviceName = escapeHtml(task.hostname || task.serial_number || `ID ${task.device_id}`);
     const modelName = escapeHtml(task.model_name || 'N/A');
-    const room = escapeHtml(task.room_name ? `${task.room_name} (${task.room_number || '?'})` : 'Kein Raum');
-    const lastInspected = escapeHtml(task.last_inspected || 'Nie');
+    const room = escapeHtml(task.room_id ? `${task.room_number || '?'} (${task.room_name || 'N/A'})` : 'Kein Raum');
     const interval = escapeHtml(task.maintenance_interval_months);
-    
+    const lastInspected = escapeHtml(task.last_inspected || 'Nie');
+
     // Fälligkeitsdatum formatieren und hervorheben
     let dueDate = 'N/A';
     let dueClass = '';

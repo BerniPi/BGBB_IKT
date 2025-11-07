@@ -47,7 +47,7 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-// NEU: Admin-Auth Middleware
+//  Admin-Auth Middleware
 const adminAuthMiddleware = (req, res, next) => {
   // Führt zuerst die normale Authentifizierung aus
   authMiddleware(req, res, () => {
@@ -85,7 +85,7 @@ app.post('/api/login', (req, res) => {
                 // ALT:
                 // const token = jwt.sign({ userId: user.user_id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
                 
-                // NEU: 'role' zum Token hinzufügen
+                //  'role' zum Token hinzufügen
                 const token = jwt.sign(
                     { userId: user.user_id, username: user.username, role: user.role }, // <-- HIER
                     JWT_SECRET, 

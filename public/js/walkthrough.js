@@ -14,17 +14,17 @@ document.addEventListener("DOMContentLoaded", () => {
   let scannerModalInstance = null; // NEU
   let html5QrcodeScanner = null; // NEU
 
-  // NEU: Modal-Instanz für das Verschieben
+  //  Modal-Instanz für das Verschieben
   let moveDeviceModalInstance = null;
 
-  // NEU: QR-Code Scanner
+  //  QR-Code Scanner
   let qrCodeScanner = null;
 
   // NEU FÜR GLOBALE SUCHE
   let currentRoomId = null; // ID des aktuell gewählten Raums
   let debounceTimer = null; // Timer für die Debounce-Funktion
 
-  // NEU: Globale Sortiervariablen
+  //  Globale Sortiervariablen
 let __sort = { col: "category_name", dir: "asc" };
 
   // --- DOM Elements ---
@@ -46,7 +46,7 @@ let __sort = { col: "category_name", dir: "asc" };
   async function initialize() {
     await loadAndGroupRooms(); // Lädt Räume und füllt floorSelect
 
-    // NEU: Scanner Modal initialisieren
+    //  Scanner Modal initialisieren
     const modalEl = document.getElementById("scannerModal");
     if (modalEl) {
       scannerModalInstance = new bootstrap.Modal(modalEl);
@@ -58,7 +58,7 @@ let __sort = { col: "category_name", dir: "asc" };
     }
 
 
-    // NEU: Move Device Modal initialisieren
+    //  Move Device Modal initialisieren
     const moveModalEl = document.getElementById("moveDeviceModal");
     if (moveModalEl) {
       moveDeviceModalInstance = new bootstrap.Modal(moveModalEl);
@@ -67,7 +67,7 @@ let __sort = { col: "category_name", dir: "asc" };
     bindEvents();
     bindSortEvents();
 
-    // === NEU: Standard-Stockwerk "0" auswählen ===
+    // ===  Standard-Stockwerk "0" auswählen ===
     const defaultFloor = "0"; // Stockwerk "0" als String
 
     // Prüfen, ob die Option <option value="0"> existiert
@@ -223,7 +223,7 @@ let __sort = { col: "category_name", dir: "asc" };
 
 
 /**
- * NEU: Bindet Klick-Events an die Tabellen-Header
+ *  Bindet Klick-Events an die Tabellen-Header
  */
 function bindSortEvents() {
   document.querySelectorAll("#walkthrough-devices-body").forEach(tbody => {
@@ -256,7 +256,7 @@ function bindSortEvents() {
 }
 
 /**
- * NEU: Aktualisiert die Sortierpfeile (CSS-Klassen)
+ *  Aktualisiert die Sortierpfeile (CSS-Klassen)
  */
 function updateSortIndicators() {
   const table = document.querySelector("#walkthrough-devices-body").closest('table');
@@ -275,7 +275,7 @@ function updateSortIndicators() {
    */
 
   async function loadDevicesForRoom(roomId) {
-    // NEU: Titel zurücksetzen
+    //  Titel zurücksetzen
     document.getElementById("walkthrough-devices-body-title").textContent =
       "Geräte in diesem Raum";
 
@@ -308,7 +308,7 @@ function updateSortIndicators() {
           '<tr><td colspan="7" class="text-center text-muted">No devices found in this room.</td></tr>';
         return;
       }
-      // NEU: Ruft renderDeviceRow mit der aktuellen Raum-ID auf
+      //  Ruft renderDeviceRow mit der aktuellen Raum-ID auf
       deviceTbody.innerHTML = devices
         .map((d) => renderDeviceRow(d, roomId))
         .join("");
@@ -318,7 +318,7 @@ function updateSortIndicators() {
   }
 
   /**
-   * NEU: Führt eine globale Gerätesuche durch (ersetzt handleDeviceSearch).
+   *  Führt eine globale Gerätesuche durch (ersetzt handleDeviceSearch).
    * Diese Funktion wird durch den 'input'-Event-Listener (debounced) aufgerufen.
    *
    * @param {string} searchTerm Der Suchbegriff aus dem Input-Feld
@@ -384,7 +384,7 @@ function updateSortIndicators() {
       maintForm.addEventListener("submit", handleMaintenanceFormSubmit);
     }
 
-    // NEU: Stockwerk-Auswahl
+    //  Stockwerk-Auswahl
     floorSelect.addEventListener("change", () => {
       handleFloorChange(floorSelect.value);
     });
@@ -416,7 +416,7 @@ function updateSortIndicators() {
     const findClearBtn = document.getElementById("walkthrough-find-clear-btn");
     const scanBtn = document.getElementById("walkthrough-scan-btn");
 
-    // NEU: Debounced Suchfunktion erstellen
+    //  Debounced Suchfunktion erstellen
     const debouncedGlobalSearch = debounce(handleGlobalDeviceSearch, 300);
 
     if (findInput) {
@@ -438,7 +438,7 @@ function updateSortIndicators() {
       });
     }
 
-    // NEU: Event-Listener für Kamera-Scan-Button
+    //  Event-Listener für Kamera-Scan-Button
     if (scanBtn) {
       scanBtn.addEventListener("click", () => {
         startScanner();
@@ -529,7 +529,7 @@ function updateSortIndicators() {
     // 4. Geräte laden
     loadDevicesForRoom(room.room_id);
 
-    // NEU: Suchfeld zurücksetzen
+    //  Suchfeld zurücksetzen
     const findInput = document.getElementById("walkthrough-find-inventory");
     if (findInput) findInput.value = "";
     clearDeviceSearchHighlight();
@@ -537,7 +537,7 @@ function updateSortIndicators() {
 
   // --- Row Rendering (ANGEPASST für Inline-Notizen UND Globale Suche) ---
   function renderDeviceRow(d, activeRoomId) {
-    // NEU: 'activeRoomId' Parameter
+    //  'activeRoomId' Parameter
     const cat = d.category_name || "-";
     const model = d.model_name || d.model_number || "-";
     const host = d.hostname || "-";
@@ -560,8 +560,8 @@ function updateSortIndicators() {
       `<span class="badge text-bg-light text-dark">${d.status || "Inaktiv"}</span>`;
     const json = encodeURIComponent(JSON.stringify(d));
 
-    // --- NEU: Logik zur Hervorhebung und Standort-Anzeige ---
-    // --- NEU: Logik zur Hervorhebung und Standort-Anzeige ---
+    // ---  Logik zur Hervorhebung und Standort-Anzeige ---
+    // ---  Logik zur Hervorhebung und Standort-Anzeige ---
     let rowClass = "";
     let roomInfo = "";
     let moveButtonHtml = ""; // <-- NEU
@@ -586,7 +586,7 @@ function updateSortIndicators() {
 
         roomInfo = `<br><small class="text-danger fw-bold">IST IN: ${escapeHtml(roomName)}</small>`;
 
-        // --- NEU: Move-Button hinzufügen ---
+        // ---  Move-Button hinzufügen ---
         // Nur hinzufügen, wenn ein Zielraum (activeRoomId) ausgewählt ist
         const currentRoomName = roomNameLabel.textContent || "aktuellen Raum";
         if (activeRoomId) {
@@ -608,7 +608,7 @@ function updateSortIndicators() {
     }
     // --- ENDE NEU ---
 
-    // --- NEU: Inline-Edit-Struktur (angepasst mit roomInfo) ---
+    // ---  Inline-Edit-Struktur (angepasst mit roomInfo) ---
     const editableNotesCell = `
           <div class="editable-cell" onclick="switchToDeviceEditMode(this)">
               <span class="cell-text">${escapedNotes || "-"}${roomInfo}</span>
@@ -935,7 +935,7 @@ function updateSortIndicators() {
   }
 
  /**
-   * NEU: Lädt die Raum-Historie für das Verschiebe-Modal.
+   *  Lädt die Raum-Historie für das Verschiebe-Modal.
    */
   async function loadMoveHistory(deviceId) {
     const tbody = document.getElementById("move-history-body");
@@ -967,7 +967,7 @@ function updateSortIndicators() {
   }
 
   /**
-   * NEU: Ersetzt die alte Funktion. Öffnet das Modal zum Verschieben.
+   *  Ersetzt die alte Funktion. Öffnet das Modal zum Verschieben.
    */
   window.moveDeviceToCurrentRoom = async function (
     deviceId,
@@ -1001,7 +1001,7 @@ function updateSortIndicators() {
   };
 
   /**
-   * NEU: Verarbeitet das Absenden des Verschiebe-Formulars.
+   *  Verarbeitet das Absenden des Verschiebe-Formulars.
    */
   async function handleMoveDeviceSubmit(event) {
     event.preventDefault();
@@ -1054,7 +1054,7 @@ function updateSortIndicators() {
 
 
   /**
-   * NEU: Entfernt ein Gerät aus dem aktuellen Raum, indem der
+   *  Entfernt ein Gerät aus dem aktuellen Raum, indem der
    *Raumeintrag auf Gestern beendet wird.
    */
   window.removeDeviceFromRoom = async function (deviceId, deviceIdentifier, roomName) {
@@ -1090,7 +1090,7 @@ function updateSortIndicators() {
     }
   };
   /**
-   * NEU: Debounce-Funktion
+   *  Debounce-Funktion
    */
   function debounce(func, delay) {
     // ... (Diese Funktion bleibt unverändert) ...

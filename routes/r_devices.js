@@ -114,7 +114,7 @@ router.get("/", (req, res) => {
 
   // ... (nach den Filtern für category_id, model_id, room_id)
 
-  // === NEU: Globale Suche (q) ===
+  // ===  Globale Suche (q) ===
   if (q) {
     // Füge die Suchbedingung hinzu.
     // Wir durchsuchen Seriennummer, Inventarnummer und Modellnummer.
@@ -365,7 +365,7 @@ router.put("/:id/mark-inspected", (req, res) => {
 // ... (vor der Sektion RAUM-HISTORIE)
 
 /**
- * NEU: POST /api/devices/:id/move-to-room
+ *  POST /api/devices/:id/move-to-room
  * Verschiebt ein Gerät in einen neuen Raum (schließt alten Eintrag, öffnet neuen).
  * Dies ist eine atomare Transaktion.
  */
@@ -446,7 +446,7 @@ router.post("/:id/move-to-room", (req, res) => {
 
 
 /**
- * NEU: PUT /api/devices/:id/correct-current-room
+ *  PUT /api/devices/:id/correct-current-room
  * Korrigiert den 'room_id' des *letzten* Historieneintrags.
  */
 router.put("/:id/correct-current-room", (req, res) => {
@@ -490,7 +490,7 @@ router.put("/:id/correct-current-room", (req, res) => {
 });
 
 /**
- * NEU: PUT /api/devices/:id/end-current-room
+ *  PUT /api/devices/:id/end-current-room
  * Beendet den aktuell offenen Raumeintrag (setzt to_date).
  */
 router.put("/:id/end-current-room", (req, res) => {
