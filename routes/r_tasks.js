@@ -190,6 +190,17 @@ router.post("/", (req, res) => {
     ],
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
+
+     // === NEU: LOGGING (CREATE) ===
+      logActivity(
+        req.user.username,
+        'CREATE',
+        'task',
+        this.lastID,
+        { task: task, room_id: room_id, priority: priority, status: status }
+      );
+      // === ENDE LOGGING ===
+
       res.status(201).json({ id: this.lastID });
     },
   );
@@ -199,10 +210,15 @@ router.post("/", (req, res) => {
 router.put("/:id", (req, res) => {
   const { id } = req.params;
   const body = req.body;
+  const username = req.user.username || "system"; // req.user ist hier verfügbar
 
   // Felder, die aktualisiert werden sollen
   const updates = [];
   const params = [];
+// === NEU: ALTEN DATENSATZ FÜR LOGGING HOLEN ===
+  db.get("SELECT * FROM tasks WHERE task_id = ?", [id], (err, oldTask) => {
+    if (err) return res.status(500).json({ message: "DB-Fehler (Log-Check).", error: err.message });
+    if (!oldTask) return res.status(404).json({ message: "Task nicht gefunden" });
 
   // Erlaubte Felder aus dem Body sammeln
   const allowedFields = [
@@ -257,25 +273,64 @@ router.put("/:id", (req, res) => {
       console.error("DB Error (PUT /tasks/:id):", err.message);
       return res.status(500).json({ error: err.message });
     }
-    if (this.changes === 0) {
-      return res.status(404).json({ message: "Task nicht gefunden" });
-    }
-    res.json({ message: "Task erfolgreich aktualisiert." });
+   // === NEU: LOGGING (UPDATE) ===
+      try {
+        const details = {};
+        // Wir vergleichen 'body' (was gesendet wurde) mit 'oldTask'
+        Object.keys(body).forEach(key => {
+          if (allowedFields.includes(key)) { // Nur erlaubte Felder loggen
+            const newValue = body[key];
+            const oldValue = oldTask[key];
+            if (String(newValue ?? "") !== String(oldValue ?? "")) {
+              details[key] = { old: oldValue, new: newValue };
+            }
+          }
+        });
+
+        // (Sonderfall: Auto-gesetzte Felder 'completed_at'/'completed_by' loggen)
+        if (body.status === 'done' && oldTask.status !== 'done') {
+            if (!details.completed_at && body.completed_at === undefined) {
+                 details.completed_at = { old: oldTask.completed_at, new: '[auto-set]' };
+            }
+            if (!details.completed_by && body.completed_by === undefined) {
+                 details.completed_by = { old: oldTask.completed_by, new: username };
+            }
+        }
+        
+        if (Object.keys(details).length > 0) {
+          logActivity(username, 'UPDATE', 'task', id, details);
+        }
+      } catch (logErr) {
+        console.error("Fehler beim Schreiben des Activity Logs (Task UPDATE):", logErr);
+      }
+      // === ENDE LOGGING ===
+
+      res.json({ message: "Task erfolgreich aktualisiert." });
+    });
   });
 });
 
 // DELETE a task
 router.delete("/:id", (req, res) => {
-  db.run(
-    "DELETE FROM tasks WHERE task_id = ?",
-    [req.params.id],
-    function (err) {
+  const { id } = req.params;
+  const username = req.user.username || "system";
+
+  // === NEU: ALTEN DATENSATZ FÜR LOGGING HOLEN ===
+  db.get("SELECT * FROM tasks WHERE task_id = ?", [id], (err, oldTask) => {
+    if (err) return res.status(500).json({ message: "DB-Fehler (Log-Check).", error: err.message });
+    if (!oldTask) return res.status(404).json({ message: "Task nicht gefunden" });
+    
+    // Jetzt das Delete ausführen
+    db.run("DELETE FROM tasks WHERE task_id = ?", [id], function (err) {
       if (err) return res.status(500).json({ error: err.message });
-      if (this.changes === 0)
-        return res.status(404).json({ message: "Task nicht gefunden" });
+      
+      // === NEU: LOGGING (DELETE) ===
+      logActivity(username, 'DELETE', 'task', id, oldTask);
+      // === ENDE LOGGING ===
+      
       res.status(200).json({ message: "Task endgültig gelöscht." });
-    },
-  );
+    });
+  });
 });
 
 // ... (alle anderen Routen)

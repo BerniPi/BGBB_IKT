@@ -5,7 +5,7 @@ const multer = require('multer');
 const XLSX = require('xlsx');
 const path = require('path');
 
-const { db } = require('../database');
+const { db, logActivity } = require('../database');
 
 // Upload-Config (im RAM)
 const upload = multer({

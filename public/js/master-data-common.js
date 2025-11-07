@@ -117,7 +117,7 @@ window.handleInputKeyDown = function(event, inputElement) {
 }
 
 // Erstellt die Zelle für Inline-Bearbeitung
-// NEU: data-type für spezielle Konvertierungen (price, date)
+//  data-type für spezielle Konvertierungen (price, date)
 window.createEditableCell = function(resource, id, field, value, displayValue = null, dataType = 'text') {
  const finalDisplayValue = escapeHtml(displayValue !== null ? (displayValue ?? '-') : (value ?? '-'));
     

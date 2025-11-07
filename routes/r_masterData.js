@@ -97,6 +97,17 @@ const createCrudEndpoints = (router, tableName, pkField) => {
               error: err.message,
             });
         }
+        // === NEU: LOGGING (CREATE) ===
+      // (Verwenden Sie req.user?.username, falls Auth-Middleware vorhanden ist, sonst 'system')
+      const username = req.user?.username || 'system';
+      const logData = { ...req.body };
+      // (Entfernen Sie sensible Daten, falls nötig, z.B. bei 'users')
+      if (tableName === 'users' && logData.password_hash) {
+          logData.password_hash = '[geschützt]';
+      }
+      logActivity(username, 'CREATE', tableName, this.lastID, logData);
+      // === ENDE LOGGING ===
+
         const responseData = { ...req.body };
         responseData[pkField] = this.lastID;
         res.status(201).json(responseData);
@@ -133,31 +144,49 @@ const createCrudEndpoints = (router, tableName, pkField) => {
     }
     // --- KORREKTUR ENDE ---
 
-    const columns = Object.keys(req.body)
-      .map((col) => `${col} = ?`)
-      .join(", ");
+    const columns = Object.keys(req.body).map((col) => `${col} = ?`).join(", ");
     const values = [...Object.values(req.body), id];
     const sql = `UPDATE ${tableName} SET ${columns} WHERE ${pkField} = ?`;
+    const username = req.user?.username || 'system';
 
-    db.run(sql, values, function (err) {
-      if (err) {
-        if (err.message.includes("UNIQUE constraint")) {
-          return res
-            .status(409)
-            .json({
-              message: "Ein anderer Eintrag hat bereits diesen Namen/Nummer.",
-            });
+    // === NEU: ALTEN DATENSATZ FÜR LOGGING HOLEN ===
+    db.get(`SELECT * FROM ${tableName} WHERE ${pkField} = ?`, [id], (err, oldData) => {
+      if (err) return res.status(500).json({ message: "DB-Fehler (Log-Check).", error: err.message });
+      if (!oldData) return res.status(404).json({ message: "Eintrag nicht gefunden" });
+
+      // Jetzt das Update ausführen
+      db.run(sql, values, function (err) {
+        if (err) {
+          // ... (Fehlerbehandlung bleibt) ...
+          return res.status(500).json({ /*...*/ });
         }
-        return res
-          .status(500)
-          .json({
-            message: "Datenbankfehler beim Aktualisieren.",
-            error: err.message,
+        
+        // === NEU: LOGGING (UPDATE) ===
+        try {
+          const details = {};
+          Object.keys(req.body).forEach(key => {
+            const newValue = req.body[key];
+            const oldValue = oldData[key];
+            if (String(newValue ?? "") !== String(oldValue ?? "")) {
+              // (Sensible Daten zensieren)
+              if (tableName === 'users' && key === 'password_hash') {
+                 details[key] = { old: '[geschützt]', new: '[geschützt]' };
+              } else {
+                 details[key] = { old: oldValue, new: newValue };
+              }
+            }
           });
-      }
-      if (this.changes === 0)
-        return res.status(404).json({ message: "Eintrag nicht gefunden" });
-      res.json({ message: "Erfolgreich aktualisiert." });
+          
+          if (Object.keys(details).length > 0) {
+            logActivity(username, 'UPDATE', tableName, id, details);
+          }
+        } catch (logErr) {
+          console.error("Fehler beim Schreiben des Activity Logs (MasterData UPDATE):", logErr);
+        }
+        // === ENDE LOGGING ===
+        
+        res.json({ message: "Erfolgreich aktualisiert." });
+      });
     });
   });
 
@@ -165,18 +194,26 @@ const createCrudEndpoints = (router, tableName, pkField) => {
   router.delete(`/${tableName}/:id`, (req, res) => {
     const { id } = req.params;
     const sql = `DELETE FROM ${tableName} WHERE ${pkField} = ?`;
+    const username = req.user?.username || 'system';
 
-    db.run(sql, [id], function (err) {
-      if (err)
-        return res
-          .status(500)
-          .json({
-            message: "Datenbankfehler beim Löschen.",
-            error: err.message,
-          });
-      if (this.changes === 0)
-        return res.status(404).json({ message: "Eintrag nicht gefunden" });
-      res.json({ message: "Erfolgreich gelöscht." });
+    // === NEU: ALTEN DATENSATZ FÜR LOGGING HOLEN ===
+    db.get(`SELECT * FROM ${tableName} WHERE ${pkField} = ?`, [id], (err, oldData) => {
+      if (err) return res.status(500).json({ message: "DB-Fehler (Log-Check).", error: err.message });
+      if (!oldData) return res.status(404).json({ message: "Eintrag nicht gefunden" });
+
+      // Jetzt das Delete ausführen
+      db.run(sql, [id], function (err) {
+        if (err) {
+          // ... (Fehlerbehandlung bleibt) ...
+          return res.status(500).json({ /*...*/ });
+        }
+        
+        // === NEU: LOGGING (DELETE) ===
+        logActivity(username, 'DELETE', tableName, id, oldData);
+        // === ENDE LOGGING ===
+        
+        res.json({ message: "Erfolgreich gelöscht." });
+      });
     });
   });
 

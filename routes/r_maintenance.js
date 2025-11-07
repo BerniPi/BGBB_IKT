@@ -141,12 +141,23 @@ router.post('/', (req, res) => {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
   `;
   const params = [ device_id, event_date, event_type, title, description, performed_by, status ];
+const username = req.user?.username || 'system';
 
   db.run(sql, params, function (err) {
     if (err) {
         console.error("DB Error (POST /maintenance):", err.message);
         return res.status(500).json({ message: 'Fehler beim Speichern.', error: err.message });
     }
+
+    // === NEU: LOGGING (CREATE) ===
+    logActivity(
+      username,
+      'CREATE',
+      'maintenance',
+      this.lastID,
+      { device_id: device_id, title: title, event_type: event_type, status: status }
+    );
+    // === ENDE LOGGING ===
     if (status === 'done') updateDeviceStatus(this.lastID); // Gerät aktualisieren
     res.status(201).json({ message: "Eintrag erstellt", maintenance_id: this.lastID });
   });
@@ -160,6 +171,7 @@ router.put('/:id', (req, res) => {
       event_date, event_type, title, description, performed_by, status
       // Hier weitere Felder holen
   } = req.body;
+  const username = req.user?.username || 'system';
 
    if (!event_date || !event_type || !title) {
     return res.status(400).json({ message: 'Datum, Typ und Titel sind erforderlich.' });
@@ -173,26 +185,60 @@ router.put('/:id', (req, res) => {
   `;
   const params = [ event_date, event_type, title, description, performed_by, status, id ];
 
+db.get("SELECT * FROM device_maintenance WHERE maintenance_id = ?", [id], (err, oldMaint) => {
+    if (err) return res.status(500).json({ message: "DB-Fehler (Log-Check).", error: err.message });
+    if (!oldMaint) return res.status(404).json({ message: 'Eintrag nicht gefunden' });
+  
   db.run(sql, params, function (err) {
     if (err) {
         console.error("DB Error (PUT /maintenance/:id):", err.message);
         return res.status(500).json({ message: 'Fehler beim Aktualisieren.', error: err.message });
     }
-    if (this.changes === 0) return res.status(404).json({ message: 'Eintrag nicht gefunden' });
-    if (status === 'done') updateDeviceStatus(id); // Gerät aktualisieren
-    res.json({ message: 'Eintrag erfolgreich aktualisiert.' });
+    // === NEU: LOGGING (UPDATE) ===
+      try {
+        const details = {};
+        Object.keys(body).forEach(key => {
+          const newValue = body[key];
+          const oldValue = oldMaint[key];
+          if (String(newValue ?? "") !== String(oldValue ?? "")) {
+            details[key] = { old: oldValue, new: newValue };
+          }
+        });
+        
+        if (Object.keys(details).length > 0) {
+          logActivity(username, 'UPDATE', 'maintenance', id, details);
+        }
+      } catch (logErr) {
+        console.error("Fehler beim Schreiben des Activity Logs (Maint. UPDATE):", logErr);
+      }
+      // === ENDE LOGGING ===
+
+      if (body.status === 'done') updateDeviceStatus(id);
+      res.json({ message: 'Eintrag erfolgreich aktualisiert.' });
+    });
   });
 });
 
 // DELETE
 router.delete('/:id', (req, res) => {
+  const { id } = req.params;
+  const username = req.user?.username || 'system';
+
+  // === NEU: ALTEN DATENSATZ FÜR LOGGING HOLEN ===
+  db.get("SELECT * FROM device_maintenance WHERE maintenance_id = ?", [id], (err, oldMaint) => {
+    if (err) return res.status(500).json({ message: "DB-Fehler (Log-Check).", error: err.message });
+    if (!oldMaint) return res.status(404).json({ message: 'Eintrag nicht gefunden' });
   db.run('DELETE FROM device_maintenance WHERE maintenance_id = ?', [req.params.id], function (err) {
     if (err) {
         console.error("DB Error (DELETE /maintenance/:id):", err.message);
         return res.status(500).json({ message: 'Fehler beim Löschen.', error: err.message });
     }
-    if (this.changes === 0) return res.status(404).json({ message: 'Eintrag nicht gefunden' });
-    res.status(200).json({ message: 'Eintrag gelöscht.' }); // Oder 204 No Content
+    // === NEU: LOGGING (DELETE) ===
+      logActivity(username, 'DELETE', 'maintenance', id, oldMaint);
+      // === ENDE LOGGING ===
+      
+      res.status(200).json({ message: 'Eintrag gelöscht.' });
+    });
   });
 });
 
