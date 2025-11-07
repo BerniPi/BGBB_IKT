@@ -1,5 +1,5 @@
 const express = require("express");
-const { db } = require("../database");
+const { db, logActivity } = require("../database");
 const router = express.Router();
 
 /**
@@ -251,10 +251,23 @@ router.post("/", (req, res) => {
       }
       return res.status(500).json({ message: err.message });
     }
+// HIER LOGGEN:
+  logActivity(
+    req.user.username, // Bekommen wir vom authMiddleware
+    'CREATE',
+    'device',
+    this.lastID,       // Die ID des neuen Geräts
+    { hostname: data.hostname, model_id: data.model_id } // Kontext
+  );
+
     res.status(201).json({ device_id: this.lastID });
   });
 });
 
+/**
+ * PUT /api/devices/:id
+ * Ein bestehendes Gerät aktualisieren.
+ */
 /**
  * PUT /api/devices/:id
  * Ein bestehendes Gerät aktualisieren.
@@ -267,8 +280,6 @@ router.put("/:id", (req, res) => {
   data = syncDeviceStatus(data);
 
   // Dynamisch nur die Felder aktualisieren, die auch im Payload sind
-  // (außer 'status', das wird von syncDeviceStatus gesteuert)
-
   const updates = [
     { key: "model_id", value: data.model_id },
     { key: "hostname", value: data.hostname },
@@ -302,22 +313,77 @@ router.put("/:id", (req, res) => {
 
   const sql = `UPDATE devices SET ${setClauses} WHERE device_id = ?`;
 
-  db.run(sql, params, function (err) {
+  // =================================================================
+  // NEUE LOGIK: ZUERST ALTEN DATENSATZ FÜR LOGGING HOLEN
+  // =================================================================
+  db.get("SELECT * FROM devices WHERE device_id = ?", [deviceId], (err, oldDevice) => {
     if (err) {
-      if (err.message.includes("UNIQUE constraint failed")) {
-        return res.status(409).json({
-          message: `Konflikt: Ein Wert (z.B. Seriennummer oder Hostname) existiert bereits. ${err.message}`,
-        });
+      return res.status(500).json({ 
+        message: "Fehler beim Abrufen des alten Gerätestatus für das Logging.", 
+        error: err.message 
+      });
+    }
+    // (Keine Sorge, wenn oldDevice null ist, schlägt der Update-Befehl
+    // unten ohnehin fehl und gibt eine 404 zurück)
+
+    // FÜHRE JETZT DAS UPDATE DURCH
+    db.run(sql, params, function (err) {
+      if (err) {
+        if (err.message.includes("UNIQUE constraint failed")) {
+          return res.status(409).json({
+            message: `Konflikt: Ein Wert (z.B. Seriennummer oder Hostname) existiert bereits. ${err.message}`,
+          });
+        }
+        return res.status(500).json({ message: err.message });
       }
-      return res.status(500).json({ message: err.message });
-    }
-    if (this.changes === 0) {
-      return res.status(404).json({ message: "Gerät nicht gefunden." });
-    }
-    res.json({ message: "Gerät aktualisiert." });
+      if (this.changes === 0) {
+        return res.status(404).json({ message: "Gerät nicht gefunden." });
+      }
+
+      // --- NEUE LOGGING-STELLE (mit oldDevice) ---
+      try {
+        const details = {};
+        
+        finalUpdates.forEach(update => {
+          const key = update.key;
+          const newValue = update.value === "" ? null : update.value; // "" als null behandeln
+          const oldValue = oldDevice ? oldDevice[key] : null;
+
+          // Logge nur, wenn sich der Wert wirklich geändert hat
+          // (Verhindert z.B. Logs für "" vs. null)
+          if (String(newValue ?? "") !== String(oldValue ?? "")) {
+            
+            // Notizen kürzen, um das Log nicht aufzublähen
+            if (key === 'notes' && (newValue || oldValue)) {
+              details[key] = { 
+                old: oldValue ? '[Notiz vorhanden]' : '[leer]', 
+                new: newValue ? '[Notiz aktualisiert]' : '[leer]' 
+              };
+            } else {
+              details[key] = { old: oldValue, new: newValue };
+            }
+          }
+        });
+
+        // Nur loggen, wenn es echte Änderungen gab
+        if (Object.keys(details).length > 0) {
+          logActivity(
+            req.user.username,
+            'UPDATE',
+            'device',
+            deviceId,
+            details // Das Objekt mit {old: ..., new: ...}
+          );
+        }
+      } catch (logErr) {
+        console.error("Fehler beim Schreiben des Activity Logs (UPDATE):", logErr);
+      }
+      // --- ENDE LOGGING ---
+
+      res.json({ message: "Gerät aktualisiert." });
+    });
   });
 });
-
 /**
  * DELETE /api/devices/:id
  * Ein Gerät löschen.
@@ -329,6 +395,14 @@ router.delete("/:id", (req, res) => {
     if (this.changes === 0) {
       return res.status(404).json({ message: "Gerät nicht gefunden." });
     }
+    // HIER LOGGEN:
+  logActivity(
+    req.user.username,
+    'DELETE',
+    'device',
+    deviceId,
+    null // Wir haben keine Details mehr, das Objekt ist weg
+  );
     res.status(204).send(); // 204 No Content
   });
 });
@@ -712,6 +786,18 @@ router.post("/bulk-update", (req, res) => {
 
   db.run(sql, params, function (err) {
     if (err) return res.status(500).json({ message: err.message });
+    // HIER LOGGEN:
+    logActivity(
+      req.user.username,
+      'BULK_UPDATE',
+      'device',
+      null, // Betrifft mehrere IDs
+      { 
+        action: field, 
+        value: (field === 'notes' ? '[Notizen]' : value), // Passwörter/sensible Daten nicht loggen
+        count: this.changes 
+      }
+    );
     res.json({ message: `${this.changes} Geräte aktualisiert.` });
   });
 });

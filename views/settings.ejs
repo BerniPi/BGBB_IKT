@@ -1,0 +1,46 @@
+<%- include('partials/header') %>
+<%- include('partials/navbar', { page: 'settings' }) %>
+
+<div class="container-fluid mt-4">
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-gear-wide-connected me-1"></i> Globale Einstellungen</h5>
+        </div>
+        
+        <form id="settingsForm">
+            <div class="card-body">
+                <p class="text-muted">Dieser Bereich ist für Administratoren reserviert und dient der Konfiguration von globalen Systemparametern.</p>
+                <hr>
+                
+                <div class="mb-3 col-md-6">
+                    <label for="setting-default_ip_prefix" class="form-label">Standard IP-Präfix</label>
+                    <input type="text" class="form-control" id="setting-default_ip_prefix" placeholder="z.B. 192.168.">
+                    <div class="form-text">Dieser Wert wird im "Gerät bearbeiten"-Dialog als Standard eingefügt, wenn keine IP vorhanden ist.</div>
+                </div>
+
+                <div class="mb-3 col-md-6">
+                    <label for="setting-example-1" class="form-label">System-E-Mail-Adresse (Inaktiv)</label>
+                    <input type="email" class="form-control" id="setting-system_email" placeholder="z.B. admin@firma.de" disabled>
+                    <div class="form-text">Für Benachrichtigungen (zukünftiges Feature).</div>
+                </div>
+
+                <div class="mb-3 col-md-6">
+                    <label for="setting-maintenance_mode" class="form-label">Wartungsmodus (Inaktiv)</label>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="setting-maintenance_mode" disabled>
+                        <label class="form-check-label" for="setting-maintenance_mode">System für Nicht-Admins sperren (zukünftiges Feature)</label>
+                    </div>
+                </div>
+
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary" id="saveSettingsBtn">
+                    <i class="bi bi-save me-1"></i> Speichern
+                </button>
+                <span id="settings-save-status" class="ms-2"></span>
+            </div>
+        </form> </div>
+</div>
+
+<script src="/js/settings.js"></script>
+<%- include('partials/footer') %>

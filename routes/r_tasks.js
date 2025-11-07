@@ -1,5 +1,5 @@
 const express = require("express");
-const { db } = require("../database");
+const { db, logActivity } = require("../database");
 const router = express.Router();
 
 // GET all tasks with filters

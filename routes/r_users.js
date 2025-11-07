@@ -1,6 +1,6 @@
 // routes/r_users.js
 const express = require("express");
-const { db } = require("../database");
+const { db, logActivity } = require("../database");
 const bcrypt = require("bcrypt");
 const router = express.Router();
 

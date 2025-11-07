@@ -21,6 +21,33 @@ const initializeDb = () => {
             notes TEXT
         )`);
 
+        db.run(`CREATE TABLE IF NOT EXISTS app_settings (
+            setting_key TEXT PRIMARY KEY NOT NULL,
+            setting_value TEXT
+        )`);
+        // Standardeinstellungen setzen (UPSERT)
+        db.run(`
+            INSERT OR REPLACE INTO app_settings (setting_key, setting_value)
+            VALUES ('default_ip_prefix', COALESCE((SELECT setting_value FROM app_settings WHERE setting_key = 'default_ip_prefix'), '192.168.'))
+        `);
+        db.run(`
+            INSERT OR REPLACE INTO app_settings (setting_key, setting_value)
+            VALUES ('maintenance_mode', COALESCE((SELECT setting_value FROM app_settings WHERE setting_key = 'maintenance_mode'), 'false'))
+        `);
+
+db.run(`CREATE TABLE IF NOT EXISTS activity_log (
+    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT DEFAULT (datetime('now', 'localtime')),
+    username TEXT,
+    action_type TEXT NOT NULL CHECK(action_type IN ('CREATE', 'UPDATE', 'DELETE', 'BULK_UPDATE', 'MOVE', 'LOGIN', 'OTHER')),
+    entity_type TEXT,
+    entity_id INTEGER,
+    details_json TEXT
+)`);
+
+db.run(`CREATE INDEX IF NOT EXISTS idx_activity_log_timestamp ON activity_log (timestamp DESC)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_activity_log_entity ON activity_log (entity_type, entity_id)`);
+
         db.run(`CREATE TABLE IF NOT EXISTS device_categories (
             category_id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_name TEXT UNIQUE NOT NULL,
@@ -180,4 +207,29 @@ const initializeDb = () => {
     });
 };
 
-module.exports = { db, initializeDb };
+/**
+ * Schreibt einen Eintrag in das zentrale Aktivitätsprotokoll.
+ * @param {string} username - Der Benutzer, der die Aktion ausführt.
+ * @param {string} actionType - 'CREATE', 'UPDATE', 'DELETE', etc.
+ * @param {string} entityType - 'device', 'model', 'room', etc.
+ * @param {number|null} entityId - Die ID des betroffenen Objekts.
+ * @param {object|null} details - Zusätzliche Infos als JSON.
+ */
+function logActivity(username, actionType, entityType, entityId, details = null) {
+  // Führe dies "fire-and-forget" aus. Wir wollen die Haupt-API nicht
+  // blockieren, falls das Logging fehlschlägt.
+  const sql = `
+    INSERT INTO activity_log (username, action_type, entity_type, entity_id, details_json)
+    VALUES (?, ?, ?, ?, ?)
+  `;
+  
+  const detailsJson = details ? JSON.stringify(details) : null;
+  
+  db.run(sql, [username, actionType, entityType, entityId, detailsJson], (err) => {
+    if (err) {
+      console.error("FATAL: Konnte Aktion nicht ins Activity Log schreiben!", err.message);
+    }
+  });
+}
+
+module.exports = { db, initializeDb, logActivity };

@@ -1,6 +1,6 @@
 // routes/maintenance.js
 const express = require('express');
-const { db } = require('../database');
+const { db, logActivity } = require('../database');
 const router = express.Router();
 
 // Hilfsfunktion: Aktualisiert last_cleaned/last_inspected am Gerät

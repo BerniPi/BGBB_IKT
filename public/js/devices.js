@@ -222,6 +222,9 @@ if (typeof apiFetch === "undefined") {
 // ----------------------------------------------------
 let __sort = { col: "category_name", dir: "asc" };
 let __filters = { category_id: "", model_id: "", room_id: "", status: "active", q: "" };
+let __globalSettings = {
+  default_ip_prefix: "192.168." // Fallback-Wert
+};
 
 let devicesCache = []; // aktuell geladene Geräte
 let modelCache = {}; // model_id -> Model (inkl. has_network)
@@ -236,7 +239,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // HIER: Die Bedingung einfügen
   if (document.getElementById('devices-table-body')) {
 
-  await Promise.all([loadFilterOptions(), loadModels()]);
+  await Promise.all([loadFilterOptions(), loadModels(), loadGlobalSettings()]);
   bindFilterEvents();
   bindSortEvents();
   bindFormSubmit();
@@ -359,6 +362,21 @@ async function loadFilterOptions() {
           return `<option value="${r.room_id}">${escapeHtml(label)}</option>`;
         })
         .join("");
+  }
+}
+
+/**
+ * Lädt öffentliche Einstellungen (z.B. IP-Präfix)
+ */
+async function loadGlobalSettings() {
+  try {
+    // Ruft /api/settings/public
+    const settings = await apiFetch("/api/settings/public");
+    if (settings && settings.default_ip_prefix) {
+      __globalSettings.default_ip_prefix = settings.default_ip_prefix;
+    }
+  } catch (err) {
+    console.error("Konnte globale Einstellungen nicht laden, verwende Fallback-Werte.", err.message);
   }
 }
 
@@ -873,9 +891,9 @@ setValue("device-mac_address", device.mac_address || "");
 
 //  Setze Standard-IP-Präfix, WENN keine IP vorhanden ist
 // (gilt für neue UND bestehende Geräte ohne IP)
-const currentIp = device.ip_address || "192.168.";
+//  Setze Standard-IP-Präfix (aus globalen Settings), WENN keine IP vorhanden ist
+const currentIp = device.ip_address || __globalSettings.default_ip_prefix;
 setValue("device-ip_address", currentIp);
-
 
     // Datumsfelder (Status)
     setValue("device-added_at", device.added_at || "");
@@ -1166,14 +1184,15 @@ async function onSubmitDeviceForm(e) {
 
   // --- IP-Adressen-Validierung (NEU) ---
   const ipValue = getValue("device-ip_address");
+  const defaultPrefix = __globalSettings.default_ip_prefix; // Dynamischen Wert holen
   
   // Prüfen: Wenn der Wert weder leer noch der Standard-Präfix ist,
   // muss es eine gültige IP sein.
   let ipToSave = null;
-  if (ipValue && ipValue.trim() !== "" && ipValue !== "192.168.") {
+  if (ipValue && ipValue.trim() !== "" && ipValue !== defaultPrefix) {
     if (!isValidIp(ipValue)) {
       alert(
-        "Die IP-Adresse ist ungültig. Bitte verwenden Sie das Format '192.168.1.10'. Der Standard-Präfix '192.168.' wird nicht gespeichert.",
+        `Die IP-Adresse ist ungültig. Bitte verwenden Sie das Format '192.168.1.10'. Der Standard-Präfix '${defaultPrefix}' wird nicht gespeichert.`,
       );
       document.getElementById("device-ip_address").focus();
       return; // Speichern abbrechen

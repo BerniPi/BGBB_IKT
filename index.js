@@ -114,6 +114,8 @@ app.get('/walkthrough', renderPage('walkthrough'));
 app.get('/devices/import', renderPage('import_devices'));
 app.get('/system-io', renderPage('system_io'));
 app.get('/users', renderPage('users'));
+app.get('/activities', renderPage('activities'));
+app.get('/settings', renderPage('settings'));
 app.get('/master-data/rooms', renderPage('master-data-rooms'));
 app.get('/master-data/models', renderPage('master-data-models'));
 app.get('/master-data/categories', renderPage('master-data-categories'));
@@ -127,6 +129,8 @@ const devicesRouter = require('./routes/r_devices');
 const importDevicesRouter = require('./routes/r_import_devices');
 const systemRouter = require('./routes/r_system');
 const usersRouter = require('./routes/r_users');
+const settingsRouter = require('./routes/r_settings');
+const activityRouter = require('./routes/r_activities');
 
 app.use('/api/master-data', authMiddleware, masterDataRouter);
 app.use('/api/tasks', authMiddleware, tasksRouter);
@@ -135,6 +139,13 @@ app.use('/api/devices', authMiddleware, devicesRouter);
 app.use('/api/devices', authMiddleware, importDevicesRouter);
 app.use('/api/system', authMiddleware, systemRouter);
 app.use('/api/users', adminAuthMiddleware, usersRouter);
+app.use('/api/activity', authMiddleware, activityRouter);
+
+// Einstellungen aufteilen:
+// - /public: Für alle angemeldeten Benutzer (z.B. für devices.js zum IP-Präfix holen)
+app.use('/api/settings/public', authMiddleware, settingsRouter.publicRouter);
+// - /admin: Nur für Admins (Lesen & Schreiben aller Einstellungen auf der Settings-Seite)
+app.use('/api/settings/admin', adminAuthMiddleware, settingsRouter.adminRouter);
 
 // Server Start
 

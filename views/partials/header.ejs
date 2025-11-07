@@ -49,6 +49,34 @@ user-select: none; }
 font-size: 0.8em; }
                 .sortable-header.sort-desc::after { content: ' \25BC';
 font-size: 0.8em; }
+
+/* * Responsive Navbar Text:
+ * - Desktop XL (> 1200px): Text ist sichtbar.
+ * - Desktop LG (992px - 1199px): Text ausblenden (nur Icon).
+ * - Mobile (< 992px): Bootstrap's navbar-collapse greift (Hamburger-Menü).
+ */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .navbar-nav .nav-link .nav-link-text {
+    display: none; /* Text ausblenden */
+  }
+  
+  /* Icons zentrieren/anpassen, wenn Text weg ist */
+  .navbar-nav .nav-link {
+    text-align: center;
+    padding-left: 0.5rem; 
+    padding-right: 0.5rem;
+  }
+  
+  /* Dropdown-Pfeil näher an das Icon rücken */
+  .navbar-nav .dropdown-toggle::after {
+      margin-left: 0.2em; 
+  }
+
+  /* Abstand zwischen Icon und (unsichtbarem) Text entfernen */
+  .navbar-nav .nav-link i.me-1 {
+    margin-right: 0 !important;
+  }
+}
 </style>
 
 <script>
@@ -108,7 +136,8 @@ font-size: 0.8em; }
           try {
             const token = localStorage.getItem('jwtToken'); // Annahme: Token-Schlüssel ist 'token'
             const usersNavLink = document.getElementById('nav-users-link');
-            
+            const settingsNavLink = document.getElementById('nav-settings-link');
+
             if (!usersNavLink) return; // Element nicht gefunden
 
             if (token) {
@@ -124,19 +153,25 @@ font-size: 0.8em; }
               // Sichtbarkeit basierend auf der Rolle steuern
               if (payload.role !== 'admin') {
                 usersNavLink.style.display = 'none';
+                settingsNavLink.style.display = 'none';
               }
               // (Wenn 'admin', bleibt es sichtbar)
 
             } else {
               // Kein Token gefunden (nicht eingeloggt) -> Menü ausblenden
               usersNavLink.style.display = 'none';
+              settingsNavLink.style.display = 'none';
             }
           } catch (e) {
             // Fehler beim Parsen (z.B. ungültiger Token) -> Vorsichtshalber ausblenden
             console.error('Rollenprüfung für Menü fehlgeschlagen:', e);
             const usersNavLink = document.getElementById('nav-users-link');
+            const settingsNavLink = document.getElementById('nav-settings-link');
             if (usersNavLink) {
                usersNavLink.style.display = 'none';
+            }
+            if (settingsNavLink) {
+               settingsNavLink.style.display = 'none';
             }
           }
     });
