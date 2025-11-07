@@ -47,6 +47,18 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
+/**
+ * Prüft, ob ein String ein gültiges IPv4-Format hat.
+ * @param {string} ip 
+ * @returns {boolean}
+ */
+function isValidIp(ip) {
+  if (!ip) return false; // Leere Strings sind hier ungültig (sollten null sein)
+  const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  return ipRegex.test(ip);
+}
+
 function escapeAttr(s) {
   return escapeHtml(s).replaceAll("\n", " ");
 }
@@ -715,7 +727,6 @@ function renderDeviceRow(d) {
     statusBadges[d.status] ||
     `<span class="badge text-bg-light text-dark">${d.status || "Inaktiv"}</span>`;
 
-const inspectedDate = formatDate(d.last_inspected);
 
   const json = encodeURIComponent(JSON.stringify(d));
   return `
@@ -730,7 +741,6 @@ const inspectedDate = formatDate(d.last_inspected);
       <td>${escapeHtml(ip)}</td>
       <td>${escapeHtml(room)}</td>
       <td>${statusBadge}</td>
-      <td>${escapeHtml(inspectedDate)}</td>
       
       <td class="text-nowrap">
         <button class="btn btn-sm btn-outline-secondary me-1" onclick="openEditModalFromList('${json}')"><i class="bi bi-pencil"></i></button>
@@ -1139,6 +1149,40 @@ async function onSubmitDeviceForm(e) {
   const deviceId = getValue("device-device_id");
   const isUpdate = !!deviceId;
 
+// --- MAC-Adressen-Validierung (NEU) ---
+  const macValue = getValue("device-mac_address");
+  const formattedMac = window.formatMacAddress(macValue);
+
+  // Prüfen: Wenn der Benutzer etwas eingegeben hat (nicht leer),
+  // aber der Formatter (formatMacAddress) 'null' zurückgibt,
+  // war die Eingabe ungültig.
+  if (macValue && macValue.trim() !== "" && formattedMac === null) {
+    alert(
+      "Die MAC-Adresse ist ungültig. Sie muss 12 Hex-Zeichen lang sein (z.B. 'AA:BB:CC:DD:EE:FF' oder 'AABBCCDDEEFF').",
+    );
+    document.getElementById("device-mac_address").focus();
+    return; // Speichern abbrechen
+  }
+
+  // --- IP-Adressen-Validierung (NEU) ---
+  const ipValue = getValue("device-ip_address");
+  
+  // Prüfen: Wenn der Wert weder leer noch der Standard-Präfix ist,
+  // muss es eine gültige IP sein.
+  let ipToSave = null;
+  if (ipValue && ipValue.trim() !== "" && ipValue !== "192.168.") {
+    if (!isValidIp(ipValue)) {
+      alert(
+        "Die IP-Adresse ist ungültig. Bitte verwenden Sie das Format '192.168.1.10'. Der Standard-Präfix '192.168.' wird nicht gespeichert.",
+      );
+      document.getElementById("device-ip_address").focus();
+      return; // Speichern abbrechen
+    }
+    // Nur wenn gültig, speichern wir den Wert
+    ipToSave = ipValue;
+  }
+  // Wenn ipValue leer oder "192.168." ist, bleibt ipToSave 'null' (korrekt)
+
   const payload = {
     // Basis
     model_id: getValue("device-model_id") || null,
@@ -1148,8 +1192,9 @@ async function onSubmitDeviceForm(e) {
     notes: getValue("device-notes") || null,
 
     // Netzwerk
-    mac_address: window.formatMacAddress(getValue("device-mac_address")),
-    ip_address: getValue("device-ip_address") || null, // IP-Adresse wird jetzt auch gespeichert
+    // Netzwerk (mit validierten Werten)
+    mac_address: formattedMac, // KORRIGIERT: Nimmt den validierten Wert
+    ip_address: ipToSave,      // KORRIGIERT: Nimmt den validierten Wert
 
     // Zeiten
     added_at: getValue("device-added_at") || null,
