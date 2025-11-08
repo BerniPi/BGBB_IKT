@@ -48,6 +48,31 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+// ====================================================
+// NEU: Globaler Raum-Status (Session)
+// ====================================================
+const GLOBAL_ROOM_KEY = 'globalCurrentRoomId';
+
+/**
+ * Speichert die ID des aktuell ausgewählten Raums in der Browser-Session.
+ * @param {string|number|null} roomId Die ID des Raums oder null/leer zum Löschen.
+ */
+function saveCurrentRoomToSession(roomId) {
+  if (roomId) {
+    sessionStorage.setItem(GLOBAL_ROOM_KEY, String(roomId));
+  } else {
+    sessionStorage.removeItem(GLOBAL_ROOM_KEY);
+  }
+}
+
+/**
+ * Ruft die ID des zuletzt ausgewählten Raums aus der Browser-Session ab.
+ * @returns {string|null} Die Raum-ID oder null, falls nicht vorhanden.
+ */
+function getCurrentRoomFromSession() {
+  return sessionStorage.getItem(GLOBAL_ROOM_KEY) || null;
+}
+
 /**
  * Prüft, ob ein String ein gültiges IPv4-Format hat.
  * @param {string} ip 
@@ -351,7 +376,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         searchInput.focus();
       });
     }
-
+try {
+      const sessionRoomId = getCurrentRoomFromSession();
+      if (sessionRoomId) {
+        __filters.room_id = sessionRoomId;
+        setValue('filter-room', sessionRoomId); // Setzt den <select> Wert
+      }
+    } catch (e) {
+      console.error("Fehler beim Wiederherstellen des Raum-Filters:", e);
+    }
     // Button "Neues Gerät" (nur auf devices.ejs)
     const btnNew = document.getElementById("btnNewDevice");
     if (btnNew) {
@@ -480,7 +513,10 @@ function bindFilterEvents() {
         __filters.category_id = getValue("filter-category") || "";
         __filters.model_id = getValue("filter-model") || "";
         __filters.room_id = getValue("filter-room") || "";
-        __filters.status = getValue("filter-status") || "active"; // 'active' ist jetzt default = (außer Ausgeschieden)
+        __filters.status = getValue("filter-status") || "active"; 
+        if (id === 'filter-room') {
+          saveCurrentRoomToSession(__filters.room_id);
+        }
         loadDevices();
       });
     },

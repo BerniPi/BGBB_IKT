@@ -68,7 +68,57 @@ let __sort = { col: "category_name", dir: "asc" };
     bindSortEvents();
 
     // ===  Standard-Stockwerk "0" auswählen ===
-    const defaultFloor = "0"; // Stockwerk "0" als String
+  const sessionRoomId = getCurrentRoomFromSession(); // (Funktion aus devices.js)
+    let restoredSession = false;
+
+    // Prüfen, ob eine Raum-ID gespeichert ist UND der Raum-Cache geladen wurde
+    if (sessionRoomId && allRoomsCache.length > 0) {
+      const room = allRoomsCache.find(r => r.room_id == sessionRoomId);
+      
+      if (room) {
+        // Schritt 1: Finde das zugehörige Stockwerk
+        let floorToSelect = "Unbekannt";
+        if (room.floor !== null && room.floor !== undefined && room.floor !== "") {
+          floorToSelect = String(room.floor); // z.B. 0 -> "0"
+        }
+        
+        // Prüfen, ob dieses Stockwerk im <select> existiert
+        const floorOption = Array.from(floorSelect.options).find(opt => opt.value === floorToSelect);
+        
+        if (floorOption) {
+          // Schritt 2: Stockwerk auswählen und Räume laden
+          floorSelect.value = floorToSelect;
+          handleFloorChange(floorToSelect); // Füllt `currentFloorRooms`
+
+          // Schritt 3: Den Raum im (jetzt gefüllten) Raum-Select finden
+          // `currentFloorRooms` ist bereits korrekt sortiert (nach sort_order)
+          const roomIndex = currentFloorRooms.findIndex(r => r.room_id == sessionRoomId);
+          
+          if (roomIndex > -1) {
+            // Schritt 4: Raum auswählen (das lädt auch die Geräte)
+            updateRoomSelection(roomIndex);
+            restoredSession = true; // Erfolg!
+          }
+        }
+      }
+    }
+
+    // --- Fallback (Alte Logik) ---
+    // Wenn nichts wiederhergestellt wurde (keine Session, Raum nicht gefunden, ...)
+    if (!restoredSession) {
+      // === Standard-Stockwerk "0" auswählen ===
+      const defaultFloor = "0"; // Stockwerk "0" als String
+      const defaultFloorExists = Array.from(floorSelect.options).some(
+        (opt) => opt.value === defaultFloor,
+      );
+      if (defaultFloorExists) {
+        floorSelect.value = defaultFloor; // Setze den <select> Wert
+        handleFloorChange(defaultFloor); // Lade die Räume für Stockwerk "0"
+      } else {
+        // Fallback auf den ursprünglichen Zustand (nichts ausgewählt)
+        resetRoomSelection();
+      }
+    }
 
     // Prüfen, ob die Option <option value="0"> existiert
     const defaultFloorExists = Array.from(floorSelect.options).some(
@@ -529,6 +579,10 @@ function updateSortIndicators() {
     currentRoomIndex = index;
     const room = currentFloorRooms[index];
     currentRoomId = room && room.room_id ? room.room_id : null;
+
+
+    saveCurrentRoomToSession(currentRoomId);
+
 
     // 1. Update Raum-Select-Box
     roomSelect.value = index;
