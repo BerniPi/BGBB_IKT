@@ -114,6 +114,41 @@ function formatDate(isoDate) {
 }
 
 /**
+ * Prüft, ob ein 'edit_id' URL-Parameter vorhanden ist
+ * und öffnet das Modal für dieses Gerät.
+ */
+async function checkUrlForEditId() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const deviceIdToEdit = urlParams.get('edit_id');
+
+  if (deviceIdToEdit) {
+    console.log("URL-Parameter 'edit_id' gefunden:", deviceIdToEdit);
+    try {
+      // Wir müssen die Daten für dieses eine Gerät holen,
+      // da es (wegen Filtern) evtl. nicht in devicesCache ist.
+      const deviceData = await apiFetch(`/api/devices/${deviceIdToEdit}`);
+      
+      if (deviceData) {
+        // openEditModal ist in dieser Datei definiert und
+        // wartet intern, bis Model-Selects etc. geladen sind.
+        openEditModal(deviceData.device_id, deviceData); 
+        
+        // URL "aufräumen", damit beim Neuladen
+        // nicht wieder das Modal aufgeht.
+        const cleanUrl = window.location.pathname; // Ohne Query-String
+        window.history.replaceState({}, document.title, cleanUrl);
+
+      } else {
+        alert(`Gerät mit ID ${deviceIdToEdit} nicht gefunden.`);
+      }
+    } catch (err) {
+      console.error("Fehler beim Auto-Öffnen des Geräts:", err);
+      alert("Fehler beim Laden des Geräts aus der URL: " + err.message);
+    }
+  }
+}
+
+/**
  * Formatiert eine MAC-Adresse in das Standard-Format (AA:BB:...).
  * @param {string} s - Der Eingabe-String.
  * @returns {string|null} Die formatierte MAC oder null, wenn leer oder ungültig.
@@ -209,18 +244,39 @@ if (typeof apiFetch === "undefined") {
       // No Content -> return null or {} ?
       return null;
     }
+// devices.js (NEUER CODE)
+
     const responseContentType = response.headers.get("content-type") || "";
+    const contentLength = response.headers.get("content-length");
+
+    // Prüfen, ob der Content-Type JSON ist UND ob es Inhalt gibt
     if (responseContentType.includes("application/json")) {
-      return response.json();
+      
+      // Wenn der Server "Content-Length: 0" sendet oder der Header fehlt,
+      // versuchen wir gar nicht erst zu parsen, sondern geben null zurück.
+      if (!contentLength || parseInt(contentLength, 10) === 0) {
+        return null; // Leere, aber erfolgreiche JSON-Antwort
+      }
+
+      // Es gibt Inhalt, also versuchen wir zu parsen
+      try {
+        return await response.json();
+      } catch (jsonError) {
+        // Fängt den Fall ab, dass der Server JSON verspricht, aber ungültiges sendet
+        console.error("apiFetch: Server send 'application/json' but body was invalid.", jsonError);
+        throw new Error("Fehler beim Verarbeiten der Server-Antwort (ungültiges JSON).");
+      }
+
     } else {
-      return response.text(); // Return text for non-JSON responses
+      // Für alle anderen Typen (z.B. text/html), Text zurückgeben
+      return response.text();
     }
   };
 }
 
 // ... (Rest von public/js/devices.js bleibt gleich) ...
 // ----------------------------------------------------
-let __sort = { col: "category_name", dir: "asc" };
+let __sort = { col: "device_id", dir: "desc" };
 let __filters = { category_id: "", model_id: "", room_id: "", status: "active", q: "" };
 let __globalSettings = {
   default_ip_prefix: "192.168." // Fallback-Wert
@@ -235,72 +291,93 @@ let categoryCache = []; // Kategorien für Filter
 // Initialisierung
 // ----------------------------------------------------
 document.addEventListener("DOMContentLoaded", async () => {
+  // --- 1. LOGIK FÜR ALLE SEITEN (Modal-Funktionalität) ---
+  // Diese Funktionen werden *immer* benötigt, wenn devices.js geladen wird,
+  // damit das "deviceModal" (Bearbeiten/Neu) funktioniert,
+  // egal ob auf devices.ejs oder walkthrough.ejs.
+  try {
+    await Promise.all([
+      loadModels(), // Füllt modelCache für Modal
+      loadGlobalSettings(), // Füllt __globalSettings für Modal (IP-Präfix)
+      loadFilterOptions(), // Füllt roomCache für Modal (Raum-Historie-Auswahl)
+    ]);
 
-  // HIER: Die Bedingung einfügen
-  if (document.getElementById('devices-table-body')) {
+    // Binde Events, die das Modal selbst steuern
+    bindFormSubmit(); // Macht den "Speichern"-Knopf im Modal funktional
+    bindRoomHistoryEvents(); // Macht "Historie +/-" Knöpfe im Modal funktional
+    bindModelChangeForNetworkFields(); // Macht Modell-Select (Netzwerkfelder) im Modal funktional
+  } catch (err) {
+    console.error("Fehler beim Laden der globalen Modal-Daten:", err);
+    alert(
+      "Kritischer Fehler: Wichtige Stammdaten (Modelle, Räume) konnten nicht geladen werden. Die Seite funktioniert möglicherweise nicht korrekt.",
+    );
+  }
 
-  await Promise.all([loadFilterOptions(), loadModels(), loadGlobalSettings()]);
-  bindFilterEvents();
-  bindSortEvents();
-  bindFormSubmit();
-  bindRoomHistoryEvents();
-  bindModelChangeForNetworkFields();
+  // --- 2. LOGIK NUR FÜR DIE HAUPT-GERÄTESEITE (devices.ejs) ---
+  // Diese Logik wird nur ausgeführt, wenn wir auf der Haupt-Geräteliste sind.
+  if (document.getElementById("devices-table-body")) {
+    
+    // Binde Events für Filter und Sortierung der Haupttabelle
+    bindFilterEvents();
+    bindSortEvents();
 
-// ---  Globale Suche ---
-  const searchInput = document.getElementById("filter-search-q");
-  const searchClearBtn = document.getElementById("filter-search-clear-btn");
+    // ---  Globale Suche (nur auf devices.ejs) ---
+    const searchInput = document.getElementById("filter-search-q");
+    const searchClearBtn = document.getElementById("filter-search-clear-btn");
 
-  if (searchInput && searchClearBtn) {
-    // Debounce-Funktion (verhindert API-Aufrufe bei jedem Tastendruck)
-    let debounceTimer;
-    const debounce = (func, delay) => {
-      return (...args) => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => func.apply(this, args), delay);
+    if (searchInput && searchClearBtn) {
+      // Debounce-Funktion
+      let debounceTimer;
+      const debounce = (func, delay) => {
+        return (...args) => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => func.apply(this, args), delay);
+        };
       };
-    };
 
-    // Debounced Such-Handler
-    const handleSearch = debounce(() => {
-      __filters.q = searchInput.value;
-      loadDevices();
-    }, 300); // 300ms Verzögerung
+      // Debounced Such-Handler
+      const handleSearch = debounce(() => {
+        __filters.q = searchInput.value;
+        loadDevices();
+      }, 300); // 300ms Verzögerung
 
-    // Event-Listener
-    searchInput.addEventListener("input", handleSearch);
+      // Event-Listener
+      searchInput.addEventListener("input", handleSearch);
 
-    searchClearBtn.addEventListener("click", () => {
-      searchInput.value = "";
-      __filters.q = "";
-      loadDevices();
-      searchInput.focus();
-    });
-  }
-  
-
-
-  // Button "Neues Gerät"
-  const btnNew = document.getElementById("btnNewDevice");
-  if (btnNew) {
-    btnNew.addEventListener("click", () => {
-      // leeres Modal öffnen
-      openEditModal(null, {
-        device_id: null,
-        serial_number: "",
-        inventory_number: "",
-        notes: "",
-        purchase_date: "",
-        price_cents: null,
-        warranty_months: null,
-        added_at: "",
-        decommissioned_at: "",
-        last_cleaned: "",
-        last_inspected: "",
+      searchClearBtn.addEventListener("click", () => {
+        searchInput.value = "";
+        __filters.q = "";
+        loadDevices();
+        searchInput.focus();
       });
-    });
-  }
+    }
 
-  await loadDevices();
+    // Button "Neues Gerät" (nur auf devices.ejs)
+    const btnNew = document.getElementById("btnNewDevice");
+    if (btnNew) {
+      btnNew.addEventListener("click", () => {
+        // leeres Modal öffnen
+        openEditModal(null, {
+          device_id: null,
+          serial_number: "",
+          inventory_number: "",
+          notes: "",
+          purchase_date: "",
+          price_cents: null,
+          warranty_months: null,
+          added_at: "",
+          decommissioned_at: "",
+          last_cleaned: "",
+          last_inspected: "",
+        });
+      });
+    }
+
+    // Lade die Geräteliste der Haupttabelle
+    await loadDevices();
+
+    // --- NEU: Prüfe auf URL-Parameter zum direkten Öffnen ---
+    await checkUrlForEditId();
   }
 });
 
@@ -1231,45 +1308,55 @@ async function onSubmitDeviceForm(e) {
   };
 
   try {
-    let currentDeviceId = deviceId;
+    
+
+    // WICHTIG: Deklariere 'res' hier oben, damit wir es im Event verwenden können
+    let res; 
+    let currentDeviceId = deviceId; // Stelle sicher, dass currentDeviceId auch hier oben ist
 
     if (isUpdate) {
       // 1. Hauptgerät aktualisieren
-      await apiFetch(`/api/devices/${currentDeviceId}`, {
+      res = await apiFetch(`/api/devices/${currentDeviceId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
     } else {
       // 1. Hauptgerät neu erstellen
-      const res = await apiFetch(`/api/devices`, {
+      res = await apiFetch(`/api/devices`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
       
-      // Neu angelegte ID setzen, damit Historie hinzugefügt werden kann
       if (res && res.device_id) {
-        currentDeviceId = res.device_id; // Wichtig für den nächsten Schritt
+        currentDeviceId = res.device_id;
         setValue("device-device_id", currentDeviceId);
-        
-        // Zeige jetzt den Historie-Block an, falls der User
-        // direkt im Anschluss (ohne Schließen) Historie hinzufügen will
         show("room-history-container"); 
       }
     }
 
     // 2. ===  Raum-Historie speichern ===
-    //    (Nur wenn wir ein Gerät bearbeiten, da bei "Neu" die Tabelle leer ist)
     if (isUpdate && currentDeviceId) {
       await saveRoomHistoryChanges(currentDeviceId);
     }
-    // (Der "rh-add" Knopf funktioniert weiterhin separat und sofort)
     
-    // Liste neu laden
-    await loadDevices();
-    closeDeviceModal();
+    // --- KORREKTUR START ---
 
-    // Modal offen lassen (falls man danach Historie eintragen will)
-    // closeDeviceModal();
+    // 3. Lade Haupt-Liste nur neu, wenn wir auf der Hauptseite (devices.ejs) sind
+    if (document.getElementById("devices-table-body")) {
+      await loadDevices();
+    }
+    
+    // 4. Schließe das Modal (WIRD JETZT IMMER ERREICHT)
+    closeDeviceModal(); 
+
+    // 5. Sende ein globales Event, damit andere Skripte (walkthrough.js)
+    //    darauf reagieren und ihre eigene Ansicht neu laden können.
+    document.dispatchEvent(new CustomEvent('deviceSaved', {
+      detail: { deviceId: currentDeviceId, response: res }
+    }));
+    
+    // --- KORREKTUR ENDE ---
+
   } catch (err) {
     alert(err.message || "Speichern fehlgeschlagen.");
   }
@@ -1330,10 +1417,3 @@ if (typeof setValue === "undefined") {
     }
   };
 }
-
-// Wenn du am Ende sowas hast:
-document.addEventListener("DOMContentLoaded", () => {
-  loadDevices();
-  loadFilterOptions();
-  loadModels();
-});

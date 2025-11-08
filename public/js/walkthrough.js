@@ -475,6 +475,21 @@ function updateSortIndicators() {
     }
   }
 
+
+  // NEUER LISTENER:
+    // Reagiert auf das 'deviceSaved'-Event, das wir in devices.js auslösen.
+    document.addEventListener('deviceSaved', (e) => {
+      // Lade die aktuelle Walkthrough-Ansicht neu (entweder Suche oder Raum)
+      const findInput = document.getElementById("walkthrough-find-inventory");
+      
+      if (findInput && findInput.value) {
+        // Wenn eine Suche aktiv ist, lade die Suche neu
+        handleGlobalDeviceSearch(findInput.value);
+      } else {
+        // Sonst lade die Raumansicht neu
+        loadDevicesForRoom(currentRoomId);
+      }
+    });
   // --- Core Logic (Angepasst) ---
 
   /**

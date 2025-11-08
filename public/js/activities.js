@@ -21,6 +21,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Fehler: ${err.message}</td></tr>`;
   }
+
+  // === NEU: Globaler Klick-Listener für die Tabelle ===
+  tbody.addEventListener("click", (e) => {
+    // Finde die geklickte TR-Zeile
+    const row = e.target.closest("tr.clickable-log-row");
+    if (!row) return; // Klick war nicht auf einer klickbaren Zeile
+
+    const type = row.dataset.entityType;
+    const id = row.dataset.entityId;
+
+    // Weiterleiten zur entsprechenden Seite mit einem URL-Parameter
+    if (type === "device" && id) {
+      window.location.href = `/devices?edit_id=${id}`;
+    } else if (type === "task" && id) {
+      window.location.href = `/tasks?edit_id=${id}`;
+    }
+  });
+  // === ENDE NEU ===
 });
 
 function renderLogEntry(log) {
@@ -74,44 +92,125 @@ function renderLogEntry(log) {
     // Raum bleibt '—'
   }
 
+  let rowProps = "";
+  const isDeleteAction = log.action_type.toUpperCase() === 'DELETE';
+
+  // Mache die Zeile nur klickbar, wenn es KEINE "DELETE"-Aktion ist.
+  if (log.entity_type === "device" && log.entity_id && !isDeleteAction) {
+    rowProps = ` data-entity-type="device" data-entity-id="${log.entity_id}" class="clickable-log-row" title="Gerät ID ${log.entity_id} bearbeiten"`;
   
+  } else if (log.entity_type === "task" && log.entity_id && !isDeleteAction) {
+    rowProps = ` data-entity-type="task" data-entity-id="${log.entity_id}" class="clickable-log-row" title="Task ID ${log.entity_id} bearbeiten"`;
+  }
 
-
-  // Details lesbar machen (NEUE LOGIK)
+// --- MODIFIKATION: Details lesbar machen (NEUE LOGIK) ---
   let details = '<span class="text-muted">—</span>';
   if (log.details_json) {
-    // ... (Diese Logik bleibt unverändert) ...
     try {
       const d = JSON.parse(log.details_json);
-      if (log.action_type === 'UPDATE' && typeof d === 'object' && d !== null && !Array.isArray(d)) {
-        // ... (UPDATE-Formatierung) ...
-        const changesHtml = Object.keys(d).map(key => {
-          const change = d[key];
-          const formatVal = (val) => { /*...*/ };
-          const oldVal = formatVal(change.old);
-          const newVal = formatVal(change.new);
-          return `
-            <div class="mb-1" style="font-size: 0.9em; line-height: 1.3;">
-              <strong class="text-body-secondary">${escapeHtml(key)}:</strong><br>
-              <span class="text-danger" style="text-decoration: line-through;">${oldVal}</span>
-              <i class="bi bi-arrow-right-short mx-1"></i>
-              <span class="text-success fw-medium">${newVal}</span>
-            </div>
-          `;
-        }).join('');
-        details = changesHtml || '<span class="text-muted">(Keine relevanten Änderungen)</span>';
-      } else {
-        details = `<pre class="mb-0" style="font-size: 0.8em;">${escapeHtml(JSON.stringify(d, null, 2))}</pre>`;
+      const action = log.action_type.toUpperCase();
+
+      // Helfer-Funktion
+      const formatVal = (val) => {
+        if (val === null || val === undefined || val === "") {
+          return '<span class="text-muted fst-italic">[leer]</span>';
+        }
+        let s = String(val);
+        // Notizen oder lange Texte kürzen
+        if (s.length > 50 && s.includes(' ')) {
+           s = s.substring(0, 50) + '...';
+        }
+        return escapeHtml(s);
+      };
+
+      // Basis-Stil für Zeilen
+      const rowStyle = 'style="font-size: 0.9em; line-height: 1.3;"';
+      let changesHtml = '';
+
+      switch (action) {
+        // Fall 1: UPDATE (Dein alter Code, funktioniert gut)
+        case 'UPDATE':
+          changesHtml = Object.keys(d).map(key => {
+            const change = d[key]; // { old: "...", new: "..." }
+            if (typeof change !== 'object' || change === null) return '';
+            const oldVal = formatVal(change.old);
+            const newVal = formatVal(change.new);
+            return `
+              <div class="mb-1" ${rowStyle}>
+                <strong class="text-body-secondary">${escapeHtml(key)}:</strong><br>
+                <span class="text-danger" style="text-decoration: line-through;">${oldVal}</span>
+                <i class="bi bi-arrow-right-short mx-1"></i>
+                <span class="text-success fw-medium">${newVal}</span>
+              </div>
+            `;
+          }).join('');
+          break;
+
+        // Fall 2: CREATE (Zeigt neue Werte in grün)
+        case 'CREATE':
+          changesHtml = Object.keys(d).map(key => {
+            const newVal = formatVal(d[key]);
+            return `
+              <div ${rowStyle}>
+                <strong class="text-body-secondary">${escapeHtml(key)}:</strong>
+                <span class="text-success ms-1">${newVal}</span>
+              </div>
+            `;
+          }).join('');
+          break;
+
+        // Fall 3: DELETE (Zeigt alte Werte durchgestrichen)
+        case 'DELETE':
+          changesHtml = Object.keys(d).map(key => {
+            const oldVal = formatVal(d[key]);
+            return `
+              <div ${rowStyle}>
+                <strong class="text-body-secondary">${escapeHtml(key)}:</strong>
+                <span class="text-danger ms-1" style="text-decoration: line-through;">${oldVal}</span>
+              </div>
+            `;
+          }).join('');
+          break;
+
+        // Fall 4: BULK_UPDATE, IMPORT und alle anderen (Standard Key-Value-Liste)
+        case 'BULK_UPDATE':
+        case 'IMPORT':
+        default:
+          if (typeof d === 'object' && d !== null && !Array.isArray(d)) {
+            changesHtml = Object.keys(d).map(key => {
+              const val = formatVal(d[key]);
+              return `
+                <div ${rowStyle}>
+                  <strong class="text-body-secondary">${escapeHtml(key)}:</strong>
+                  <span class="text-body ms-1">${val}</span>
+                </div>
+              `;
+            }).join('');
+          } else {
+            // Fallback, wenn 'd' kein Objekt ist (z.B. nur eine Zahl)
+            details = `<pre class="mb-0" style="font-size: 0.8em;">${escapeHtml(JSON.stringify(d, null, 2))}</pre>`;
+          }
+          break;
       }
+      
+      // Setze 'details', wenn 'changesHtml' generiert wurde
+      if (changesHtml) {
+          details = changesHtml || '<span class="text-muted">(Keine Details)</span>';
+      }
+      // (Sonst bleibt 'details' der <pre>-Tag vom 'default'-Fall)
+
     } catch (e) {
+      console.error("Fehler beim Parsen der Log-Details:", e, log.details_json);
       details = '<span class="text-danger">Log-Details ungültig</span>';
     }
   }
+  // --- ENDE MODIFIKATION ---
+
 
   // Das <tr>-Rendering bleibt gleich (verwendet die neuen 'entity' und 'room' Variablen)
   return `
-    <tr>
-      <td class="text-nowrap">${ts} Uhr</td>
+    <tr ${rowProps}>
+      <td class="text-nowrap">${ts}</td>
       <td class="text-nowrap">${user}</td>
       <td class="text-nowrap">${actionBadge}</td>
       <td>${entity}</td>

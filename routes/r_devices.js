@@ -148,21 +148,22 @@ router.get("/", (req, res) => {
   // === ENDE NEU ===
   //
   // --- Sortierung (bleibt unverändert) ---
-  const sortDir = dir === "desc" ? "DESC" : "ASC";
-  const sortWhitelist = {
+const sortDir = dir ? (dir === "desc" ? "DESC" : "ASC") : "DESC"; 
+const sortWhitelist = {
+    device_id: "d.device_id",
     category_name: "c.category_name",
-    model_name: "m.model_name", // KORRIGIERT (war 'model_number')
+    model_name: "m.model_name",
     hostname: "d.hostname",
     serial_number: "d.serial_number",
     inventory_number: "d.inventory_number",
     mac_address: "d.mac_address",
     ip_address: "d.ip_address",
-    room_number: "r.room_number", // HINZUGEFÜGT
+    room_number: "r.room_number",
     room_name: "r.room_name",
     status: "d.status",
     last_inspected: "d.last_inspected",
   };
-  const orderBy = sortWhitelist[sort] || "c.category_name";
+const orderBy = sortWhitelist[sort] || "d.device_id";
 
   // === SQL SELECT ANPASSUNG START ===
   const sql = `
@@ -198,6 +199,52 @@ router.get("/", (req, res) => {
       });
     }
     res.json(rows);
+  });
+});
+
+/**
+ * GET /api/devices/:id
+ * Ein einzelnes Gerät mit allen JOINs abrufen (für Modal-Links).
+ */
+router.get("/:id", (req, res) => {
+  const deviceId = req.params.id;
+  // Wir verwenden dieselbe komplexe Abfrage wie in der Haupt-GET-Route
+  const sql = `
+    SELECT
+        d.*,                     -- Alle Felder vom Gerät
+        m.model_number,
+        m.model_name,
+        c.category_name,
+        r.room_name,
+        r.room_number,
+        r.room_id,
+        -- Effektive Werte
+        COALESCE(d.purchase_date, m.purchase_date) as effective_purchase_date,
+        COALESCE(d.price_cents, m.price_cents) as effective_price_cents,
+        COALESCE(d.warranty_months, m.warranty_months) as effective_warranty_months,
+        -- Originale Modellwerte
+        m.purchase_date AS model_purchase_date,
+        m.price_cents AS model_price_cents,
+        m.warranty_months AS model_warranty_months
+    FROM devices d
+    LEFT JOIN models m ON d.model_id = m.model_id
+    LEFT JOIN device_categories c ON m.category_id = c.category_id
+    LEFT JOIN room_device_history h ON h.device_id = d.device_id AND h.to_date IS NULL
+    LEFT JOIN rooms r ON h.room_id = r.room_id
+    WHERE d.device_id = ?
+  `;
+
+  db.get(sql, [deviceId], (err, row) => {
+    if (err) {
+      console.error("DB Error (GET /devices/:id):", err);
+      return res
+        .status(500)
+        .json({ message: "DB Fehler", error: err.message });
+    }
+    if (!row) {
+      return res.status(404).json({ message: "Gerät nicht gefunden" });
+    }
+    res.json(row);
   });
 });
 
@@ -386,24 +433,89 @@ router.put("/:id", (req, res) => {
 });
 /**
  * DELETE /api/devices/:id
- * Ein Gerät löschen.
+ * Ein Gerät löschen (mit erweitertem Logging).
  */
 router.delete("/:id", (req, res) => {
   const deviceId = req.params.id;
-  db.run("DELETE FROM devices WHERE device_id = ?", [deviceId], function (err) {
-    if (err) return res.status(500).json({ message: err.message });
-    if (this.changes === 0) {
+
+  // --- SCHRITT 1: GERÄTEDATEN FÜR LOGGING VORABRUFEN ---
+  // Wir holen alle Infos, die wir im Log speichern wollen.
+  const getSql = `
+    SELECT
+        d.hostname,
+        d.serial_number,
+        d.inventory_number,
+        m.model_name,
+        r.room_name,
+        r.room_number
+    FROM devices d
+    LEFT JOIN models m ON d.model_id = m.model_id
+    LEFT JOIN room_device_history h ON h.device_id = d.device_id AND h.to_date IS NULL
+    LEFT JOIN rooms r ON h.room_id = r.room_id
+    WHERE d.device_id = ?
+  `;
+
+  db.get(getSql, [deviceId], (err, oldDeviceData) => {
+    if (err) {
+      return res.status(500).json({ 
+        message: "Fehler beim Abrufen der Gerätedaten vor dem Löschen.", 
+        error: err.message 
+      });
+    }
+    
+    // Wenn !oldDeviceData, existiert das Gerät nicht.
+    // Wir können hier direkt 404 zurückgeben, da auch der DELETE fehlschlagen würde.
+    if (!oldDeviceData) {
       return res.status(404).json({ message: "Gerät nicht gefunden." });
     }
-    // HIER LOGGEN:
-  logActivity(
-    req.user.username,
-    'DELETE',
-    'device',
-    deviceId,
-    null // Wir haben keine Details mehr, das Objekt ist weg
-  );
-    res.status(204).send(); // 204 No Content
+
+    // --- SCHRITT 2: GERÄT LÖSCHEN ---
+    db.run("DELETE FROM devices WHERE device_id = ?", [deviceId], function (err) {
+      if (err) {
+        // Falls das Löschen fehlschlägt (z.B. Foreign Key Constraint)
+        return res.status(500).json({ message: err.message });
+      }
+      
+      // (this.changes === 0 sollte dank db.get() oben nie passieren,
+      // aber wir lassen die 404-Prüfung von db.get() die Hauptarbeit machen)
+
+      // --- SCHRITT 3: LOGGEN (mit den alten Daten) ---
+      
+      // Bereite das Detail-Objekt für das Log vor
+      const logDetails = {
+        hostname: oldDeviceData.hostname,
+        serial_number: oldDeviceData.serial_number,
+        model_name: oldDeviceData.model_name,
+        inventory_number: oldDeviceData.inventory_number,
+        // Kombiniere Raum-Infos
+        last_room: (oldDeviceData.room_number || oldDeviceData.room_name) 
+                   ? `${oldDeviceData.room_number || ''} (${oldDeviceData.room_name || ''})`.replace(" ()", "").trim()
+                   : null
+      };
+      
+      // Entferne null/undefined-Werte aus den Details, um das Log sauber zu halten
+      Object.keys(logDetails).forEach(key => {
+        if (logDetails[key] === null || logDetails[key] === undefined) {
+          delete logDetails[key];
+        }
+      });
+
+      try {
+        logActivity(
+          req.user.username,
+          'DELETE',
+          'device',
+          deviceId,
+          logDetails // HIER die abgerufenen Details übergeben
+        );
+      } catch (logErr) {
+        console.error("Fehler beim Schreiben des Activity Logs (DELETE):", logErr);
+        // Wir senden trotzdem Erfolg, da das Gerät gelöscht wurde.
+      }
+
+      // --- SCHRITT 4: ERFOLG MELDEN ---
+      res.status(200).json({ message: "Gerät gelöscht." });  
+    });
   });
 });
 
