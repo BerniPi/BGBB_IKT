@@ -541,6 +541,20 @@ router.put("/:id/mark-inspected", (req, res) => {
     if (this.changes === 0) {
       return res.status(404).json({ message: "Gerät nicht gefunden." });
     }
+
+    try {
+      logActivity(
+        req.user.username,
+        'UPDATE',
+        'device',
+        id,
+        { last_inspected: inspectionDate }
+      );
+    } catch (logErr) {
+      console.error("Fehler beim Schreiben des Activity Logs (mark-inspected):", logErr);
+    }
+    // --- ENDE NEU ---
+
     res.json({
       message: "Gerät als kontrolliert markiert.",
       date: inspectionDate,
@@ -624,6 +638,21 @@ router.post("/:id/move-to-room", (req, res) => {
           error: errorOccurred.message,
         });
       } else {
+        try {
+          logActivity(
+            req.user.username,
+            'MOVE', // Neuer Aktionstyp
+            'device',
+            deviceId,
+            { 
+              action: "move-to-room", 
+              new_room_id: new_room_id, 
+              move_date: moveDate 
+            }
+          );
+        } catch (logErr) {
+          console.error("Fehler beim Schreiben des Activity Logs (move-to-room):", logErr);
+        }
         return res.json({ message: "Gerät erfolgreich verschoben." });
       }
     });
@@ -643,6 +672,18 @@ router.put("/:id/correct-current-room", (req, res) => {
     return res.status(400).json({ message: "new_room_id ist erforderlich." });
   }
 
+  const getOldSql = `
+    SELECT room_id 
+    FROM room_device_history 
+    WHERE device_id = ? 
+    ORDER BY from_date DESC, history_id DESC 
+    LIMIT 1
+  `;
+  db.get(getOldSql, [deviceId], (err, oldEntry) => {
+    if (err) return res.status(500).json({ message: "DB Fehler (Log-Check)", error: err.message });
+    
+    // (Fahre fort, auch wenn oldEntry nicht gefunden wird)
+    const old_room_id = oldEntry ? oldEntry.room_id : null;
   // Diese Abfrage findet den history_id des Eintrags mit dem letzten 'from_date'
   // und aktualisiert dessen 'room_id'.
   const sql = `
@@ -671,7 +712,25 @@ router.put("/:id/correct-current-room", (req, res) => {
         .status(404)
         .json({ message: "Kein Historieneintrag zum Korrigieren gefunden." });
     }
-    res.json({ message: "Raum-Historie erfolgreich korrigiert." });
+
+    try {
+        logActivity(
+          req.user.username,
+          'UPDATE',
+          'device',
+          deviceId,
+          { 
+            action: "correct-current-room",
+            room_id: { old: old_room_id, new: new_room_id }
+          }
+        );
+      } catch (logErr) {
+        console.error("Fehler beim Schreiben des Activity Logs (correct-room):", logErr);
+      }
+      // --- ENDE NEU ---
+
+      res.json({ message: "Raum-Historie erfolgreich korrigiert." });
+    });
   });
 });
 
@@ -713,6 +772,20 @@ router.put("/:id/end-current-room", (req, res) => {
         .status(404)
         .json({ message: "Kein offener Raumeintrag zum Beenden gefunden." });
     }
+    try {
+      logActivity(
+        req.user.username,
+        'UPDATE',
+        'device',
+        deviceId,
+        { 
+          action: "end-current-room",
+          to_date: to_date
+        }
+      );
+    } catch (logErr) {
+      console.error("Fehler beim Schreiben des Activity Logs (end-room):", logErr);
+    }
     res.json({ message: "Raumeintrag erfolgreich beendet." });
   });
 });
@@ -733,7 +806,7 @@ router.get("/:id/rooms-history", (req, res) => {
     FROM room_device_history h
     LEFT JOIN rooms r ON h.room_id = r.room_id
     WHERE h.device_id = ?
-    ORDER BY h.from_date DESC
+    ORDER BY h.from_date ASC
   `;
   db.all(sql, [deviceId], (err, rows) => {
     if (err) return res.status(500).json({ message: err.message });
@@ -741,71 +814,288 @@ router.get("/:id/rooms-history", (req, res) => {
   });
 });
 
+// r_devices.js
+
 /**
  * POST /api/devices/:id/rooms-history
  * Neuen Historien-Eintrag hinzufügen.
+ * (MODIFIZIERT: Nutzt Transaktion, um alte Einträge zu schließen/korrigieren)
  */
 router.post("/:id/rooms-history", (req, res) => {
   const deviceId = req.params.id;
   const { room_id, from_date, to_date, notes } = req.body;
+
   if (!room_id || !from_date) {
     return res
       .status(400)
       .json({ message: "Raum und Von-Datum sind erforderlich." });
   }
-  const sql = `
-    INSERT INTO room_device_history (device_id, room_id, from_date, to_date, notes)
-    VALUES (?, ?, ?, ?, ?)
-  `;
-  db.run(
-    sql,
-    [deviceId, room_id, from_date, to_date || null, notes || null],
-    function (err) {
-      if (err) return res.status(500).json({ message: err.message });
-      res.status(201).json({ history_id: this.lastID });
-    },
-  );
+
+  // 1. Tag vor dem neuen Startdatum berechnen
+  // (simpleDayBefore ist oben in r_devices.js definiert)
+  const day_before_new_from = simpleDayBefore(from_date); 
+  if (!day_before_new_from) {
+     return res.status(400).json({ message: "Ungültiges 'from_date'. Bitte YYYY-MM-DD verwenden." });
+  }
+
+  // 2. Transaktion starten
+  db.serialize(() => {
+    db.run("BEGIN TRANSACTION", (err) => {
+      if (err) return res.status(500).json({ message: `DB Error (BEGIN): ${err.message}` });
+    });
+
+    let errorOccurred = null;
+
+    // 3. Alle Einträge korrigieren, die mit dem neuen 'from_date' kollidieren
+    // (Setzt 'to_date' auf den Tag vor dem neuen Start)
+    // Das betrifft:
+    //    a) Offene Einträge (to_date IS NULL)
+    //    b) Überlappende Einträge (to_date >= from_date)
+    const sqlClose = `
+      UPDATE room_device_history
+      SET to_date = ?
+      WHERE device_id = ?
+        AND from_date < ?  -- Nur Einträge, die *vorher* gestartet sind
+        AND (to_date >= ? OR to_date IS NULL) -- Und *hineinragen* oder offen sind
+    `;
+    
+    db.run(sqlClose, [day_before_new_from, deviceId, from_date, from_date], function (err) {
+      if (err) {
+        console.error("Fehler bei Transaktion (room-history / CLOSE):", err);
+        errorOccurred = err;
+      }
+    });
+
+    // 4. Neuen Eintrag einfügen
+    const sqlInsert = `
+      INSERT INTO room_device_history (device_id, room_id, from_date, to_date, notes)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    
+    let newHistoryId = null; // Variable für die neue ID (für Logging)
+
+    db.run(
+      sqlInsert,
+      [deviceId, room_id, from_date, to_date || null, notes || null],
+      function (err) {
+        if (err) {
+          console.error("Fehler bei Transaktion (room-history / INSERT):", err);
+          errorOccurred = err;
+        }
+        
+        // Speichere die ID für das Logging
+        newHistoryId = this.lastID;
+
+        // 5. Transaktion abschließen
+        const finalCmd = errorOccurred ? "ROLLBACK" : "COMMIT";
+        db.run(finalCmd, (err) => {
+          if (err) {
+            return res.status(500).json({ message: `Fatal DB Error (${finalCmd}): ${err.message}` });
+          }
+
+          if (errorOccurred) {
+            return res.status(500).json({
+              message: "DB-Fehler beim Hinzufügen (Rollback durchgeführt).",
+              error: errorOccurred.message,
+            });
+          }
+
+          // 6. Logging (nur bei Erfolg)
+          try {
+            logActivity(
+              req.user.username,
+              'CREATE',
+              'device', // Log auf das Gerät
+              deviceId,
+              { 
+                action: "add-room-history",
+                history_id: newHistoryId, // Verwende die gespeicherte ID
+                room_id: room_id,
+                from_date: from_date
+              }
+            );
+          } catch (logErr) {
+            console.error("Fehler beim Schreiben des Activity Logs (add-room-history):", logErr);
+          }
+          
+          // 7. Erfolg melden
+          res.status(201).json({ history_id: newHistoryId });
+        });
+      }
+    );
+  });
 });
 
 /**
  * PUT /api/devices/:id/rooms-history/:history_id
- * Historien-Eintrag aktualisieren.
+ * Historien-Eintrag aktualisieren (MIT ÜBERSCHNEIDUNGS-PRÜFUNG).
  */
 router.put("/:id/rooms-history/:history_id", (req, res) => {
   const { id: deviceId, history_id } = req.params;
-  // Wichtig: 'room_id' wird im Frontend mitgesendet!
   const { room_id, from_date, to_date, notes } = req.body;
 
-  const sql = `
-    UPDATE room_device_history
-    SET room_id = ?, from_date = ?, to_date = ?, notes = ?
-    WHERE history_id = ? AND device_id = ?
-  `;
-  db.run(
-    sql,
-    [room_id, from_date, to_date || null, notes || null, history_id, deviceId],
-    function (err) {
-      if (err) return res.status(500).json({ message: err.message });
-      if (this.changes === 0)
-        return res.status(404).json({ message: "Eintrag nicht gefunden." });
-      res.json({ message: "Historie aktualisiert." });
-    },
-  );
-});
+  // Bereinige 'to_date' (leerer String -> null)
+  const finalToDate = to_date || null;
+  const finalNotes = notes || null;
 
+  // === 1. NEU: Interne Datumsvalidierung ===
+  if (finalToDate && finalToDate < from_date) {
+    return res.status(400).json({
+      message:
+        "Validierungsfehler: Das 'Bis'-Datum darf nicht vor dem 'Von'-Datum liegen.",
+    });
+  }
+
+  // === 2. NEU: Überschneidungs-Check (Overlap Validation) ===
+  // Wir suchen nach JEDEM ANDEREN Eintrag (history_id != ?) für DIESES Gerät,
+  // dessen Zeitraum [F2, T2] sich mit dem NEUEN Zeitraum [F1, T1] überschneidet.
+  //
+  // Klassische Überlappung: (F1 <= T2) AND (T1 >= F2)
+  // Wir müssen NULL (unendlich) für T1 und T2 berücksichtigen.
+  const overlapSql = `
+    SELECT COUNT(*) as overlap_count
+    FROM room_device_history
+    WHERE
+      device_id = ?       -- Für dieses Gerät
+      AND history_id != ?   -- Außer dem Eintrag, den wir bearbeiten
+      AND (
+        -- Bedingung 1: F1 <= T2 (Neues 'Von' liegt vor/an altem 'Bis')
+        -- (Wenn T2 NULL ist, ist die Bedingung immer wahr, da T2 = unendlich)
+        ? <= to_date OR to_date IS NULL
+      )
+      AND (
+        -- Bedingung 2: T1 >= F2 (Neues 'Bis' liegt nach/an altem 'Von')
+        -- (Wenn T1 NULL ist, ist die Bedingung immer wahr, da T1 = unendlich)
+        ? >= from_date OR ? IS NULL
+      )
+  `;
+
+  const overlapParams = [
+    deviceId,
+    history_id,
+    from_date, // F1
+    finalToDate, // T1
+    finalToDate, // T1 (erneut für T1 >= F2 Check)
+  ];
+
+  db.get(overlapSql, overlapParams, (err, row) => {
+    if (err) {
+      return res.status(500).json({
+        message: "DB-Fehler bei der Überschneidungsprüfung.",
+        error: err.message,
+      });
+    }
+
+    if (row && row.overlap_count > 0) {
+      // 409 Conflict: Es wurde eine Überschneidung gefunden
+      return res.status(409).json({
+        message:
+          "Konflikt: Der angegebene Zeitraum überschneidet sich mit einem anderen Historieneintrag für dieses Gerät.",
+      });
+    }
+
+    // --- 3. KEINE ÜBERSCHNEIDUNG: ALTEN EINTRAG FÜR LOGGING HOLEN ---
+    // (Dieser Teil bleibt wie bisher)
+    const getOldSql = "SELECT * FROM room_device_history WHERE history_id = ?";
+
+    db.get(getOldSql, [history_id], (err, oldEntry) => {
+      if (err)
+        return res
+          .status(500)
+          .json({ message: "DB Fehler (Log-Check)", error: err.message });
+      // (Fahre fort, auch wenn oldEntry nicht gefunden wird)
+
+      // --- 4. DAS EIGENTLICHE UPDATE DURCHFÜHREN ---
+      const sql = `
+        UPDATE room_device_history
+        SET room_id = ?, from_date = ?, to_date = ?, notes = ?
+        WHERE history_id = ? AND device_id = ?
+      `;
+      db.run(
+        sql,
+        [room_id, from_date, finalToDate, finalNotes, history_id, deviceId],
+        function (err) {
+          if (err) return res.status(500).json({ message: err.message });
+          if (this.changes === 0)
+            return res.status(404).json({ message: "Eintrag nicht gefunden." });
+
+          // --- Logging-Logik (unverändert, nutzt jetzt finalToDate) ---
+          try {
+            const details = {};
+            if (oldEntry) {
+              if (String(oldEntry.room_id) !== String(room_id))
+                details.room_id = { old: oldEntry.room_id, new: room_id };
+              if (String(oldEntry.from_date).slice(0, 10) !== String(from_date).slice(0, 10))
+                details.from_date = { old: oldEntry.from_date, new: from_date };
+              if (String(oldEntry.to_date ?? "").slice(0, 10) !== String(finalToDate ?? "").slice(0, 10))
+                details.to_date = { old: oldEntry.to_date, new: finalToDate };
+              if (String(oldEntry.notes ?? "") !== String(finalNotes ?? ""))
+                details.notes = { old: "[Notiz]", new: "[Notiz]" };
+            }
+
+            if (Object.keys(details).length > 0) {
+              details.action = "update-room-history";
+              details.history_id = history_id;
+              logActivity(
+                req.user.username,
+                "UPDATE",
+                "device",
+                deviceId,
+                details,
+              );
+            }
+          } catch (logErr) {
+            console.error(
+              "Fehler beim Schreiben des Activity Logs (update-room-history):",
+              logErr,
+            );
+          }
+          // --- ENDE LOGGING ---
+
+          res.json({ message: "Historie aktualisiert." });
+        },
+      );
+    });
+  });
+});
 /**
  * DELETE /api/devices/:id/rooms-history/:history_id
  * Historien-Eintrag löschen.
  */
 router.delete("/:id/rooms-history/:history_id", (req, res) => {
   const { id: deviceId, history_id } = req.params;
+// --- NEU: ALTEN EINTRAG FÜR LOGGING HOLEN ---
+  const getOldSql = "SELECT * FROM room_device_history WHERE history_id = ?";
+  
+  db.get(getOldSql, [history_id], (err, oldEntry) => {
+    if (err) return res.status(500).json({ message: "DB Fehler (Log-Check)", error: err.message });
+    // (Fahre fort, auch wenn oldEntry nicht gefunden wird)
+
   const sql =
     "DELETE FROM room_device_history WHERE history_id = ? AND device_id = ?";
   db.run(sql, [history_id, deviceId], function (err) {
     if (err) return res.status(500).json({ message: err.message });
     if (this.changes === 0)
       return res.status(404).json({ message: "Eintrag nicht gefunden." });
-    res.status(204).send();
+    try {
+        logActivity(
+          req.user.username,
+          'DELETE', // Oder 'UPDATE', da es das Gerät beeinflusst
+          'device',
+          deviceId,
+          { 
+            action: "delete-room-history",
+            history_id: history_id,
+            deleted_entry: { room_id: oldEntry?.room_id, from: oldEntry?.from_date, to: oldEntry?.to_date }
+          }
+        );
+      } catch (logErr) {
+        console.error("Fehler beim Schreiben des Activity Logs (delete-room-history):", logErr);
+      }
+      // --- ENDE NEU ---
+
+res.status(200).json({ message: "Eintrag erfolgreich gelöscht." }); 
+   });
   });
 });
 
@@ -987,15 +1277,32 @@ router.post("/bulk-rooms-history", (req, res) => {
           .json({ message: `Fehler bei Transaktion: ${error.message}` });
       } else {
         db.run("COMMIT");
+        // --- NEU: LOGGING ---
+        try {
+          logActivity(
+            req.user.username,
+            'BULK_UPDATE',
+            'device',
+            null, // Betrifft mehrere IDs
+            { 
+              action: "bulk-room-history",
+              room_id: room_id,
+              from_date: from_date,
+              count: device_ids.length 
+            }
+          );
+        } catch (logErr) {
+          console.error("Fehler beim Schreiben des Activity Logs (bulk-rooms-history):", logErr);
+        }
+        // --- ENDE NEU ---
+
         return res.json({
           message: `${device_ids.length} Historieneinträge hinzugefügt (und vorherige Einträge automatisch geschlossen).`,
         });
       }
     });
   });
-  // --- KORREKTUR ENDE ---
 });
-
 
 // Alle Geräte eines Raums auf "heute inspiziert" setzen
 router.post("/bulk/mark-inspected", (req, res) => {
@@ -1030,6 +1337,24 @@ router.post("/bulk/mark-inspected", (req, res) => {
       return res.status(500).json({ error: "DB-Fehler beim Bulk-Update" });
     }
     // this.changes enthält die Anzahl betroffener Zeilen
+    try {
+      if (this.changes > 0) {
+        logActivity(
+          req.user.username,
+          'BULK_UPDATE',
+          'device',
+          null,
+          { 
+            action: "bulk-mark-inspected",
+            room_id: room_id,
+            date: today,
+            count: this.changes 
+          }
+        );
+      }
+    } catch (logErr) {
+      console.error("Fehler beim Schreiben des Activity Logs (bulk-mark-inspected):", logErr);
+    }
     return res.json({ ok: true, updated: this.changes, date: today });
   });
 });

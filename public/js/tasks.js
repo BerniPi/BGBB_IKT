@@ -16,6 +16,35 @@ if (typeof escapeHtml === "undefined") {
   };
 }
 
+/**
+ * NEU: Prüft, ob ein 'edit_id' URL-Parameter vorhanden ist
+ * und öffnet das Modal für diesen Task.
+ */
+async function checkUrlForTaskEdit() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const taskIdToEdit = urlParams.get('edit_id');
+
+  if (taskIdToEdit) {
+    console.log("URL-Parameter 'edit_id' (Task) gefunden:", taskIdToEdit);
+    
+    try {
+      // Die 'editTask'-Funktion existiert bereits
+      // und kümmert sich um das Abrufen der Daten und das Öffnen des Modals.
+      await editTask(taskIdToEdit); 
+      
+      // URL "aufräumen", damit beim Neuladen
+      // nicht wieder das Modal aufgeht.
+      const cleanUrl = window.location.pathname; // Ohne Query-String
+      window.history.replaceState({}, document.title, cleanUrl);
+
+    } catch (err) {
+      // editTask() sollte bereits einen alert() anzeigen
+      console.error("Fehler beim Auto-Öffnen des Tasks:", err);
+    }
+  }
+}
+
+
 let completeTaskModalInstance = null;
 let taskModalInstance = null;
 
@@ -36,6 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
   completeTaskModalInstance = new bootstrap.Modal(
     document.getElementById("completeTaskModal"),
   );
+
+checkUrlForTaskEdit();
 
   document.getElementById("newTaskBtn").addEventListener("click", () => {
     document.getElementById("taskForm").reset();

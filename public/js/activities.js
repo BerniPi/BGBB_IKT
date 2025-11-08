@@ -1,4 +1,63 @@
+ // NEU: Übersetzungs-Map für Detail-Felder
+const detailKeyTranslations = {
+// Gerätefelder (unverändert)
+  model_id: "Modell",
+  hostname: "Hostname",
+  serial_number: "Seriennummer",
+  inventory_number: "Inventarnummer",
+  mac_address: "MAC-Adresse",
+  ip_address: "IP-Adresse",
+  added_at: "Hinzugefügt am",
+  decommissioned_at: "Ausgeschieden am",
+  purchase_date: "Kaufdatum",
+  price_cents: "Preis",
+  warranty_months: "Garantie (Monate)",
+  last_cleaned: "Zuletzt gereinigt",
+  last_inspected: "Zuletzt kontrolliert",
+  
+  // Log-spezifische Felder (aus DELETE)
+  model_name: "Modell",
+  last_room: "Letzter Raum",
+
+  // --- NEU: Task-Felder ---
+  task: "Aufgabe",
+  task_id: "Task ID",
+  category: "Kategorie",
+  priority: "Priorität",
+  status: "Status", // 'status' ist jetzt für Tasks & Geräte gültig
+  date: "Datum",
+  reported_by: "Gemeldet von",
+  assigned_to: "Zugewiesen an",
+  completed_at: "Erledigt am",
+  completed_by: "Erledigt von",
+  notes: "Notizen", // 'notes' ist jetzt für Tasks & Geräte gültig
+  room_id: "Raum",
+  
+  // Task-Löschfelder (falls sie auftauchen)
+  created_at: "Erstellt am",
+  updated_at: "Geändert am",
+  entered_by: "Erstellt von",
+
+  // Bulk Felder
+  action: "Aktion",
+  count: "Anzahl",
+};
+
+/**
+ * NEU: Helfer-Funktion zum Übersetzen
+ * Nimmt einen DB-Key und gibt das deutsche Label zurück.
+ * @param {string} key - z.B. "serial_number"
+ * @returns {string} - z.B. "Seriennummer"
+ */
+function translateDetailKey(key) {
+  // Schlägt in der Map nach. Wenn nichts gefunden wird,
+  // wird der Original-Key (sicher escaped) zurückgegeben.
+  return detailKeyTranslations[key] || escapeHtml(key);
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
+
+ 
   // apiFetch ist global verfügbar (aus devices.js)
   if (typeof apiFetch === "undefined") {
     console.error("apiFetch ist nicht definiert. Stelle sicher, dass main.js oder devices.js geladen wird.");
@@ -41,8 +100,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // === ENDE NEU ===
 });
 
+// activities.js
+
 function renderLogEntry(log) {
-  // Zeitstempel lesbar formatieren
+  // 1. Zeitstempel, Benutzer, Aktion (unverändert)
   const ts = new Date(log.timestamp).toLocaleString('de-DE', {
     day: '2-digit',
     month: '2-digit',
@@ -50,33 +111,57 @@ function renderLogEntry(log) {
     hour: '2-digit',
     minute: '2-digit'
   });
-
   const user = escapeHtml(log.username || 'Unbekannt');
   const actionBadge = getActionBadge(log.action_type);
 
-  // --- MODIFIZIERT: Objekt (z.B. "device #101") ---
+  // 2. Aktionstyp und Details (aus JSON) FRÜHZEITIG bestimmen
+  const isDeleteAction = log.action_type.toUpperCase() === 'DELETE';
+  let detailsData = null; // Wird die geparsten JSON-Daten enthalten
+  
+  if (log.details_json) {
+    try {
+      detailsData = JSON.parse(log.details_json);
+    } catch (e) {
+      console.error("Fehler beim Parsen der Log-Details:", e, log.details_json);
+    }
+  }
+
+  // 3. Objekt (entity) und Raum (room) bestimmen
   let entity = 'System';
-    let room = '<span class="text-muted">—</span>';
+  let room = '<span class="text-muted">—</span>';
 
   if (log.entity_type === 'device') {
-    // --- Fall 1: Es ist ein GERÄT ---
-    const model = escapeHtml(log.model_name || 'Unbek. Modell');
-    const serial = escapeHtml(log.serial_number || `ID ${log.entity_id}`);
-    entity = `${model}<br><small class="text-muted">${serial}</small>`;
     
-    // Raum des GERÄTS (benutzt die umbenannten Felder)
-    if (log.device_room_name || log.device_room_number) {
-      const rName = escapeHtml(log.device_room_name || '');
-      const rNum = escapeHtml(log.device_room_number || '');
-      room = rNum ? `${rNum} (${rName})` : rName;
+    // Fall A: DELETE-Aktion. Daten MÜSSEN aus den Details (detailsData) kommen.
+    if (isDeleteAction && detailsData) {
+      const model = escapeHtml(detailsData.model_name || 'Gelöschtes Modell');
+      const identifier = escapeHtml(
+        detailsData.serial_number || 
+        detailsData.hostname || 
+        detailsData.inventory_number || 
+        `ID ${log.entity_id}`
+      );
+      entity = `${model}<br><small class="text-muted">${identifier}</small>`;
+      
+      if (detailsData.last_room) {
+        room = escapeHtml(detailsData.last_room);
+      }
+    } 
+    // Fall B: CREATE/UPDATE-Aktion. Daten kommen aus dem LEFT JOIN.
+    else if (!isDeleteAction) { 
+      const model = escapeHtml(log.model_name || 'Unbek. Modell');
+      const serial = escapeHtml(log.serial_number || `ID ${log.entity_id}`);
+      entity = `${model}<br><small class="text-muted">${serial}</small>`;
+      
+      if (log.device_room_name || log.device_room_number) {
+        const rName = escapeHtml(log.device_room_name || '');
+        const rNum = escapeHtml(log.device_room_number || '');
+        room = rNum ? `${rNum} (${rName})` : rName;
+      }
     }
   
   } else if (log.entity_type === 'task') {
-    // --- Fall 2: Es ist ein TASK (NEU) ---
-    // Zeige den Task-Namen (Text) an
     entity = escapeHtml(log.task_name || `Task ID ${log.entity_id}`);
-    
-    // Raum des TASKS
     if (log.task_room_name || log.task_room_number) {
       const rName = escapeHtml(log.task_room_name || '');
       const rNum = escapeHtml(log.task_room_number || '');
@@ -84,60 +169,56 @@ function renderLogEntry(log) {
     }
 
   } else if (log.entity_type) {
-    // --- Fall 3: Fallback für andere Typen (room, model, etc.) ---
     entity = escapeHtml(log.entity_type);
     if (log.entity_id) {
       entity += ` <span class="text-muted">#${log.entity_id}</span>`;
     }
-    // Raum bleibt '—'
   }
 
+  // 4. Klickbare Zeile (Logik unverändert)
   let rowProps = "";
-  const isDeleteAction = log.action_type.toUpperCase() === 'DELETE';
-
-  // Mache die Zeile nur klickbar, wenn es KEINE "DELETE"-Aktion ist.
   if (log.entity_type === "device" && log.entity_id && !isDeleteAction) {
     rowProps = ` data-entity-type="device" data-entity-id="${log.entity_id}" class="clickable-log-row" title="Gerät ID ${log.entity_id} bearbeiten"`;
-  
   } else if (log.entity_type === "task" && log.entity_id && !isDeleteAction) {
     rowProps = ` data-entity-type="task" data-entity-id="${log.entity_id}" class="clickable-log-row" title="Task ID ${log.entity_id} bearbeiten"`;
   }
 
-// --- MODIFIKATION: Details lesbar machen (NEUE LOGIK) ---
+  // 5. Details-Spalte (verwendet 'detailsData' wieder)
   let details = '<span class="text-muted">—</span>';
-  if (log.details_json) {
+  if (detailsData) {
     try {
-      const d = JSON.parse(log.details_json);
+      const d = detailsData;
       const action = log.action_type.toUpperCase();
 
-      // Helfer-Funktion
+      // Helfer-Funktion (unverändert)
       const formatVal = (val) => {
         if (val === null || val === undefined || val === "") {
           return '<span class="text-muted fst-italic">[leer]</span>';
         }
         let s = String(val);
-        // Notizen oder lange Texte kürzen
         if (s.length > 50 && s.includes(' ')) {
            s = s.substring(0, 50) + '...';
         }
         return escapeHtml(s);
       };
-
-      // Basis-Stil für Zeilen
+      
       const rowStyle = 'style="font-size: 0.9em; line-height: 1.3;"';
       let changesHtml = '';
 
       switch (action) {
-        // Fall 1: UPDATE (Dein alter Code, funktioniert gut)
         case 'UPDATE':
           changesHtml = Object.keys(d).map(key => {
-            const change = d[key]; // { old: "...", new: "..." }
+            const change = d[key]; 
             if (typeof change !== 'object' || change === null) return '';
             const oldVal = formatVal(change.old);
             const newVal = formatVal(change.new);
+            
+            // *** HIER IST DIE ÄNDERUNG ***
+            const germanKey = translateDetailKey(key);
+
             return `
               <div class="mb-1" ${rowStyle}>
-                <strong class="text-body-secondary">${escapeHtml(key)}:</strong><br>
+                <strong class="text-body-secondary">${germanKey}:</strong><br>
                 <span class="text-danger" style="text-decoration: line-through;">${oldVal}</span>
                 <i class="bi bi-arrow-right-short mx-1"></i>
                 <span class="text-success fw-medium">${newVal}</span>
@@ -146,68 +227,72 @@ function renderLogEntry(log) {
           }).join('');
           break;
 
-        // Fall 2: CREATE (Zeigt neue Werte in grün)
         case 'CREATE':
           changesHtml = Object.keys(d).map(key => {
             const newVal = formatVal(d[key]);
+            
+            // *** HIER IST DIE ÄNDERUNG ***
+            const germanKey = translateDetailKey(key);
+
             return `
               <div ${rowStyle}>
-                <strong class="text-body-secondary">${escapeHtml(key)}:</strong>
+                <strong class="text-body-secondary">${germanKey}:</strong>
                 <span class="text-success ms-1">${newVal}</span>
               </div>
             `;
           }).join('');
           break;
 
-        // Fall 3: DELETE (Zeigt alte Werte durchgestrichen)
         case 'DELETE':
           changesHtml = Object.keys(d).map(key => {
             const oldVal = formatVal(d[key]);
+            
+            // *** HIER IST DIE ÄNDERUNG ***
+            const germanKey = translateDetailKey(key);
+            
             return `
               <div ${rowStyle}>
-                <strong class="text-body-secondary">${escapeHtml(key)}:</strong>
+                <strong class="text-body-secondary">${germanKey}:</strong>
                 <span class="text-danger ms-1" style="text-decoration: line-through;">${oldVal}</span>
               </div>
             `;
           }).join('');
           break;
 
-        // Fall 4: BULK_UPDATE, IMPORT und alle anderen (Standard Key-Value-Liste)
         case 'BULK_UPDATE':
         case 'IMPORT':
         default:
           if (typeof d === 'object' && d !== null && !Array.isArray(d)) {
             changesHtml = Object.keys(d).map(key => {
               const val = formatVal(d[key]);
+              
+              // *** HIER IST DIE ÄNDERUNG ***
+              const germanKey = translateDetailKey(key);
+              
               return `
                 <div ${rowStyle}>
-                  <strong class="text-body-secondary">${escapeHtml(key)}:</strong>
+                  <strong class="text-body-secondary">${germanKey}:</strong>
                   <span class="text-body ms-1">${val}</span>
                 </div>
               `;
             }).join('');
           } else {
-            // Fallback, wenn 'd' kein Objekt ist (z.B. nur eine Zahl)
             details = `<pre class="mb-0" style="font-size: 0.8em;">${escapeHtml(JSON.stringify(d, null, 2))}</pre>`;
           }
           break;
       }
       
-      // Setze 'details', wenn 'changesHtml' generiert wurde
       if (changesHtml) {
           details = changesHtml || '<span class="text-muted">(Keine Details)</span>';
       }
-      // (Sonst bleibt 'details' der <pre>-Tag vom 'default'-Fall)
 
     } catch (e) {
-      console.error("Fehler beim Parsen der Log-Details:", e, log.details_json);
+      console.error("Fehler beim Rendern der Log-Details:", e);
       details = '<span class="text-danger">Log-Details ungültig</span>';
     }
   }
-  // --- ENDE MODIFIKATION ---
 
-
-  // Das <tr>-Rendering bleibt gleich (verwendet die neuen 'entity' und 'room' Variablen)
+  // 6. Das <tr>-Rendering (unverändert)
   return `
     <tr ${rowProps}>
       <td class="text-nowrap">${ts}</td>
