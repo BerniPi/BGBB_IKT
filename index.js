@@ -157,3 +157,15 @@ app.listen(PORT, () => {
     console.log(`🚀 Server läuft auf http://localhost:${PORT}`);
 });
 */
+
+// --- HTTP zu HTTPS Weiterleitung ---
+const http = require('http');
+
+http.createServer((req, res) => {
+  // Ziel-URL: gleiche Host + Pfad, aber https und Port 4002
+  const host = req.headers['host'] ? req.headers['host'].split(':')[0] : 'localhost';
+  res.writeHead(301, { Location: `https://${host}:${HTTPS_PORT}${req.url}` });
+  res.end();
+}).listen(PORT, () => {
+  console.log(`🌐 HTTP-Server läuft auf http://localhost:${PORT} und leitet weiter auf https://localhost:${HTTPS_PORT}`);
+});
