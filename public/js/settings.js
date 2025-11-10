@@ -20,6 +20,7 @@ const OPTIONAL_COLUMN_KEYS = [
   "inventory_number",
   "mac_address",
   "ip_address",
+  "notes",
 ];
 // === ENDE HELPER ===
 

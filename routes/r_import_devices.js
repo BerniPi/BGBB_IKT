@@ -29,6 +29,18 @@ function fmt(dateObj) {
   return `${y}-${m}-${d}`;
 }
 
+// === NEUE HELFSFUNKTION (Nur Finden) ===
+/**
+ * Findet ein Modell nur anhand der Modellnummer.
+ * @param {string} model_number
+ * @returns {Promise<number|null>} Die model_id oder null
+ */
+async function findModelByNumber(model_number) {
+  if (!model_number) return null;
+  const row = await dbGet(`SELECT model_id FROM models WHERE model_number = ?`, [norm(model_number)]);
+  return row ? row.model_id : null;
+}
+
 function parseISO(s) {
   if (!s || typeof s !== 'string') return null;
   const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -413,5 +425,124 @@ router.post('/import', upload.single('file'), async (req, res) => {
     res.status(500).send(err.message || 'Unbekannter Importfehler');
   }
 });
+// =======================================================
+// === NEUER IMPORT-WORKFLOW (SIMPLE)
+// =======================================================
+
+
+/**
+ * POST: Simple-Import
+ * Akzeptiert: ip_address, hostname, serial_number, model_number, mac_address
+ * Key: serial_number
+ * Strikt: Legt KEINE Modelle an.
+ */
+router.post('/import-simple', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).render('import_devices_error', {
+      page: 'devices-import-simple', error: 'Keine Datei hochgeladen.'
+    });
+  }
+
+  try {
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
+
+    // Spaltenzuordnung
+    const h = (name) => Object.keys(rows[0] || {}).find(k => norm(k).toLowerCase() === norm(name).toLowerCase());
+    const COL = {
+      serial: h('serial_number'),
+      model: h('model_number'),
+      host: h('hostname'),
+      ip: h('ip_address'),
+      mac: h('mac_address')
+    };
+
+    if (!COL.serial || !COL.model) {
+      throw new Error('Wichtige Spalten (serial_number, model_number) nicht im Header gefunden.');
+    }
+
+    let created = 0, updated = 0;
+    const problems = [];
+
+    await dbRun("BEGIN TRANSACTION");
+
+    try {
+      for (const [i, r] of rows.entries()) {
+        const rowNum = i + 2;
+        
+        // 1. Daten extrahieren
+        const serial_number = toNullIfEmpty(r[COL.serial]);
+        const model_number = toNullIfEmpty(r[COL.model]);
+        const hostname = toNullIfEmpty(r[COL.host]);
+        const ip_address = toNullIfEmpty(r[COL.ip]);
+        const mac_address = normalizeMac(r[COL.mac]); // Helfer wiederverwenden 
+
+        // 2. Validierung (Schlüssel-Felder)
+        if (!serial_number) {
+          problems.push(`Zeile ${rowNum}: Übersprungen - 'serial_number' fehlt.`);
+          continue;
+        }
+        if (!model_number) {
+          problems.push(`Zeile ${rowNum} (SN: ${serial_number}): Übersprungen - 'model_number' fehlt.`);
+          continue;
+        }
+
+        // 3. Modell-Lookup (STRIKT - KEIN ensureModel)
+        const model_id = await findModelByNumber(model_number);
+        
+        if (!model_id) {
+          problems.push(`Zeile ${rowNum} (SN: ${serial_number}): Übersprungen - Modell '${model_number}' nicht in der DB gefunden. Es werden keine neuen Modelle angelegt.`);
+          continue;
+        }
+
+        // 4. Gerät-Lookup (anhand serial_number)
+        const existingDevice = await dbGet(`SELECT device_id FROM devices WHERE serial_number = ?`, [serial_number]);
+
+        if (existingDevice) {
+          // 5. UPDATE
+          // Aktualisiert alle Werte (außer serial_number)
+          await dbRun(
+            `UPDATE devices SET model_id = ?, hostname = ?, ip_address = ?, mac_address = ?
+             WHERE device_id = ?`,
+            [model_id, hostname, ip_address, mac_address, existingDevice.device_id]
+          );
+          updated++;
+        } else {
+          // 6. CREATE
+          await dbRun(
+            `INSERT INTO devices (serial_number, model_id, hostname, ip_address, mac_address, status)
+             VALUES (?, ?, ?, ?, ?, 'active')`,
+            [serial_number, model_id, hostname, ip_address, mac_address]
+          );
+          created++;
+        }
+      } // Ende for loop
+
+      await dbRun("COMMIT");
+
+      // 7. Ergebnis rendern (neue EJS-Datei)
+      res.render('import_devices_simple_result', {
+        page: 'devices-import-simple',
+        created, 
+        updated, 
+        problems
+      });
+
+    } catch (loopError) {
+      await dbRun("ROLLBACK");
+      throw loopError; // Wird vom äußeren catch gefangen
+    }
+
+  } catch (err) {
+    console.error("Simple-Import-Fehler:", err);
+    // Wir rendern die Standard-Fehlerseite
+    res.status(500).render('import_devices_error', {
+        page: 'devices-import-simple',
+        error: err.message || 'Unbekannter Importfehler'
+    });
+  }
+});
+
 
 module.exports = router;

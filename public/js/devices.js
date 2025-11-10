@@ -875,6 +875,7 @@ const serClass = optionalKeys.includes('serial_number') ? 'col-optional' : '';
 const invClass = optionalKeys.includes('inventory_number') ? 'col-optional' : '';
 const macClass = optionalKeys.includes('mac_address') ? 'col-optional' : '';
 const ipClass = optionalKeys.includes('ip_address') ? 'col-optional' : '';
+const notesClass = optionalKeys.includes('notes') ? 'col-optional' : '';
   const cat = d.category_name || "-";
   const model = d.model_name || d.model_number || "-";
   const host = d.hostname || "-";
@@ -882,6 +883,12 @@ const ipClass = optionalKeys.includes('ip_address') ? 'col-optional' : '';
   const inv = d.inventory_number || "-";
   const mac = window.formatMacAddress(d.mac_address) || "-";
   const ip = d.ip_address || "-";
+  let notes = d.notes || "-";
+  if (notes.length > 30) {
+    notes = notes.substring(0, 27) + "...";
+  }
+
+  // Raum-Formatierung mit Sortierlogik
   let room = "—";
   if (d.room_id) {
     const num = d.room_number;
@@ -923,6 +930,7 @@ const ipClass = optionalKeys.includes('ip_address') ? 'col-optional' : '';
       <td class="${ipClass}">${escapeHtml(ip)}</td>
       <td>${escapeHtml(room)}</td>
       <td>${statusBadge}</td>
+      <td class="${notesClass}" title="${escapeHtml(d.notes || "")}">${escapeHtml(notes)}</td>
       
       <td class="text-nowrap">
         <button class="btn btn-sm btn-outline-secondary me-1" onclick="openEditModalFromList('${json}')"><i class="bi bi-pencil"></i></button>

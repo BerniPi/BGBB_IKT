@@ -112,6 +112,7 @@ app.get('/maintenance', renderPage('maintenance'));
 app.get('/devices', renderPage('devices'));
 app.get('/walkthrough', renderPage('walkthrough'));
 app.get('/devices/import', renderPage('import_devices'));
+app.get('/devices/import-simple', renderPage('import_devices_simple'));
 app.get('/system-io', renderPage('system_io'));
 app.get('/users', renderPage('users'));
 app.get('/activities', renderPage('activities'));

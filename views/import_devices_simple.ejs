@@ -1,0 +1,72 @@
+<%- include('partials/header') %>
+<%- include('partials/navbar', { page }) %>
+
+<div class="container py-4">
+  <div class="card shadow-sm">
+    <div class="card-header">
+      <h5 class="mb-0"><i class="bi bi-file-earmark-excel me-2"></i> Geräte-Import (Einfach)</h5>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">
+        Importiert oder aktualisiert Geräte basierend auf der <strong>Seriennummer</strong>.
+        Legt <strong>keine</strong> neuen Modelle oder Räume an.
+      </p>
+      <p>Erforderliche Spalten: <code>serial_number</code>, <code>model_number</code>.<br>
+         Optionale Spalten: <code>ip_address</code>, <code>hostname</code>, <code>mac_address</code>.
+      </p>
+
+      <form id="importSimpleForm" action="/api/devices/import-simple" method="post" enctype="multipart/form-data" class="mt-3">
+        <div class="mb-3">
+          <label class="form-label">Excel-Datei (.xlsx, .xls)</label>
+          <input type="file" name="file" accept=".xlsx,.xls" class="form-control" required>
+        </div>
+        <button class="btn btn-primary"><i class="bi bi-upload me-1"></i> Import starten</button>
+        <a href="/devices" class="btn btn-secondary ms-2">Abbrechen</a>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/footer') %>
+
+<script>
+(() => {
+  // ID angepasst
+  const form = document.getElementById('importSimpleForm');
+  if (!form) return;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault(); // normalen Submit stoppen
+
+    const fileInput = form.querySelector('input[type="file"]');
+    const file = fileInput?.files?.[0];
+    if (!file) { alert('Bitte eine Excel-Datei auswählen.'); return; }
+
+    const token = localStorage.getItem('jwtToken');
+    if (!token) { alert('Kein Login-Token gefunden. Bitte zuerst einloggen.'); return; }
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+      // URL angepasst
+      const res = await fetch('/api/devices/import-simple', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: fd
+      });
+
+      // Fehlerbehandlung (rendert jetzt die Fehlerseite)
+      // Wenn res.ok false ist, ist es bereits die gerenderte Fehlerseite.
+      
+      const html = await res.text();
+      document.open();
+      document.write(html); 
+      document.close();
+
+    } catch (err) {
+      alert('Import fehlgeschlagen: ' + (err.message || 'Unbekannter Fehler'));
+    }
+  });
+})();
+</script>

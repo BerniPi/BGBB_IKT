@@ -55,7 +55,7 @@
                 </li>
 
                 <% 
-                  const systemPages = ['users', 'settings', 'devices/import', 'system-io'];
+                  const systemPages = ['users', 'settings', 'devices/import', 'devices-import-simple','system-io'];
                   const isSystemPage = systemPages.some(p => page.includes(p));
                 %>
                 <li class="nav-item dropdown" id="nav-system-links">
@@ -69,6 +69,7 @@
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item <%= page === 'system-io' ? 'active' : '' %>" href="/system-io"><i class="bi bi-box-arrow-down me-1"></i> System Export/Import</a></li>
                         <li><a class="dropdown-item <%= page === 'devices/import' ? 'active' : '' %>" href="/devices/import"><i class="bi bi-file-earmark-excel me-1"></i> Geräte-Import (Alt)</a></li>
+                        <li><a class="dropdown-item <%= page === 'devices-import-simple' ? 'active' : '' %>" href="/devices/import-simple"><i class="bi bi-file-earmark-excel me-1"></i> Geräte-Import (Einfach)</a></li>
                     </ul>
                 </li>
             </ul>

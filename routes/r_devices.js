@@ -129,7 +129,8 @@ router.get("/", (req, res) => {
           d.mac_address LIKE ? OR
           d.ip_address LIKE ? OR
           r.room_name LIKE ? OR
-          r.room_number LIKE ?
+          r.room_number LIKE ? OR
+          d.notes LIKE ?
         )
       `);
     const searchTerm = `%${q}%`;
@@ -142,7 +143,8 @@ router.get("/", (req, res) => {
       searchTerm, // mac_address (NEU)
       searchTerm, // ip_address (NEU)
       searchTerm, // room_name (NEU)
-      searchTerm  // room_number (NEU)
+      searchTerm, // room_number (NEU)
+      searchTerm  // notes (NEU)
     );
   }
   // === ENDE NEU ===
@@ -161,7 +163,7 @@ const sortWhitelist = {
     room_number: "r.room_number",
     room_name: "r.room_name",
     status: "d.status",
-    last_inspected: "d.last_inspected",
+    notes: "d.notes",
   };
 const orderBy = sortWhitelist[sort] || "d.device_id";
 
