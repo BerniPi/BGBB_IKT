@@ -78,6 +78,16 @@ font-size: 0.8em; }
   }
 }
 
+/* Standardmäßig sind Spalten mit dieser Klasse ausgeblendet */
+  .col-optional {
+    display: none;
+  }
+  /* Wenn der Container (die Card) die Klasse .show-optional-cols hat, ... */
+  .show-optional-cols .col-optional {
+    /* ... werden sie als normale Tabellenzellen angezeigt */
+    display: table-cell;
+  }
+  
 .clickable-log-row {
           cursor: pointer;
         }

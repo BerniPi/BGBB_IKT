@@ -33,8 +33,7 @@ function rowsToSettingsObject(rows) {
  */
 publicRouter.get("/", (req, res) => {
   // Whitelist der öffentlichen Schlüssel
-  const publicKeys = ["default_ip_prefix"];
-  const placeholders = publicKeys.map(() => "?").join(",");
+const publicKeys = ["default_ip_prefix", "optional_table_columns"];  const placeholders = publicKeys.map(() => "?").join(",");
 
   const sql = `SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN (${placeholders})`;
 

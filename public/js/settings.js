@@ -13,6 +13,17 @@ document.addEventListener("DOMContentLoaded", () => {
   form.addEventListener("submit", saveSettings);
 });
 
+// === HELPER FÜR NEUE LOGIK ===
+const OPTIONAL_COLUMN_KEYS = [
+  "hostname",
+  "serial_number",
+  "inventory_number",
+  "mac_address",
+  "ip_address",
+];
+// === ENDE HELPER ===
+
+
 /**
  * Lädt alle Einstellungen vom Admin-Endpunkt und füllt das Formular.
  */
@@ -28,6 +39,13 @@ async function loadSettings() {
 
     // Checkboxen/Switches
     setChecked("setting-maintenance_mode", settings.maintenance_mode === 'true');
+
+    // === NEU: Optionale Spalten-Checkboxes ===
+    const optionalCols = (settings.optional_table_columns || "").split(',');
+    for (const key of OPTIONAL_COLUMN_KEYS) {
+        setChecked(`setting-opt-col-${key}`, optionalCols.includes(key));
+    }
+    // === ENDE NEU ===
 
   } catch (err) {
     alert(`Fehler beim Laden der Einstellungen: ${err.message}`);
@@ -47,6 +65,15 @@ async function saveSettings(e) {
   status.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Speichere...';
 
   try {
+    // === NEU: Optionale Spalten auslesen ===
+    const selectedOptionalCols = [];
+    for (const key of OPTIONAL_COLUMN_KEYS) {
+        if (getChecked(`setting-opt-col-${key}`)) {
+            selectedOptionalCols.push(key);
+        }
+    }
+    // === ENDE NEU ===
+
     // Daten aus dem Formular sammeln
     const payload = {
       // Text-/Input-Felder
@@ -54,7 +81,10 @@ async function saveSettings(e) {
       "system_email": getValue("setting-system_email"),
       
       // Checkboxen/Switches (als 'true'/'false' String speichern)
-      "maintenance_mode": getChecked("setting-maintenance_mode") ? 'true' : 'false'
+      "maintenance_mode": getChecked("setting-maintenance_mode") ? 'true' : 'false',
+
+      // === NEU: Als String speichern ===
+      "optional_table_columns": selectedOptionalCols.join(','),
     };
     
     // Ruft PUT /api/settings/admin

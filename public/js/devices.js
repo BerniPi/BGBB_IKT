@@ -304,7 +304,8 @@ if (typeof apiFetch === "undefined") {
 let __sort = { col: "device_id", dir: "desc" };
 let __filters = { category_id: "", model_id: "", room_id: "", status: "active", q: "" };
 let __globalSettings = {
-  default_ip_prefix: "192.168." // Fallback-Wert
+  default_ip_prefix: "192.168.", // Fallback-Wert
+  optional_table_columns: [] // <-- NEU: Als Array initialisieren
 };
 
 let devicesCache = []; // aktuell geladene Geräte
@@ -366,6 +367,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadDevices();
       }, 300); // 300ms Verzögerung
 
+      initOptionalColumnsToggle(); // Initialisiere den Toggle für optionale Spalten
       // Event-Listener
       searchInput.addEventListener("input", handleSearch);
 
@@ -479,12 +481,18 @@ async function loadFilterOptions() {
  * Lädt öffentliche Einstellungen (z.B. IP-Präfix)
  */
 async function loadGlobalSettings() {
-  try {
+ try {
     // Ruft /api/settings/public
     const settings = await apiFetch("/api/settings/public");
     if (settings && settings.default_ip_prefix) {
       __globalSettings.default_ip_prefix = settings.default_ip_prefix;
     }
+    // === NEU: Optionale Spalten laden ===
+    if (settings && settings.optional_table_columns) {
+        // Speichere als Array
+        __globalSettings.optional_table_columns = settings.optional_table_columns.split(',').filter(k => k);
+    }
+    // === ENDE NEU ===
   } catch (err) {
     console.error("Konnte globale Einstellungen nicht laden, verwende Fallback-Werte.", err.message);
   }
@@ -727,6 +735,43 @@ function toggleBulkInputs() {
 }
 bulkAction?.addEventListener("change", toggleBulkInputs);
 
+/**
+ * Initialisiert den Umschalter für optionale Spalten
+ */
+function initOptionalColumnsToggle() {
+    const toggle = document.getElementById('toggle-optional-cols');
+    const toggleContainer = document.getElementById('optional-cols-toggle-container');
+    const card = document.getElementById('devices-card');
+    
+    if (!toggle || !card || !toggleContainer) return;
+
+    const optionalKeys = __globalSettings.optional_table_columns;
+
+    // 1. Wenn keine Spalten als optional definiert sind, verstecke den Schalter
+    if (optionalKeys.length === 0) {
+        toggleContainer.classList.add('d-none');
+        return;
+    }
+
+    // 2. Schalter sichtbar machen
+    toggleContainer.classList.remove('d-none');
+
+    // 3. Event-Listener an den Schalter binden
+    toggle.addEventListener('change', () => {
+        card.classList.toggle('show-optional-cols', toggle.checked);
+    });
+
+    // 4. CSS-Klasse .col-optional zu den <th> (Headern) hinzufügen,
+    //    die in den Settings als optional markiert wurden.
+    const tableHeaders = document.querySelectorAll('th[data-col-key]');
+    tableHeaders.forEach(th => {
+        const key = th.dataset.colKey;
+        if (optionalKeys.includes(key)) {
+            th.classList.add('col-optional');
+        }
+    });
+}
+
 // Bulk Apply
 document.getElementById("bulk-apply")?.addEventListener("click", async () => {
   const ids = Array.from(selectedDeviceIds);
@@ -824,6 +869,12 @@ document
   ?.addEventListener("click", clearSelection);
 
 function renderDeviceRow(d) {
+  const optionalKeys = __globalSettings.optional_table_columns;
+const hostClass = optionalKeys.includes('hostname') ? 'col-optional' : '';
+const serClass = optionalKeys.includes('serial_number') ? 'col-optional' : '';
+const invClass = optionalKeys.includes('inventory_number') ? 'col-optional' : '';
+const macClass = optionalKeys.includes('mac_address') ? 'col-optional' : '';
+const ipClass = optionalKeys.includes('ip_address') ? 'col-optional' : '';
   const cat = d.category_name || "-";
   const model = d.model_name || d.model_number || "-";
   const host = d.hostname || "-";
@@ -865,11 +916,11 @@ function renderDeviceRow(d) {
       <td><input type="checkbox" class="form-check-input row-select" data-id="${d.device_id}"></td>
       <td>${escapeHtml(cat)}</td>
       <td>${escapeHtml(model)}</td>
-      <td>${escapeHtml(host)}</td>
-      <td>${escapeHtml(ser)}</td>
-      <td>${escapeHtml(inv)}</td>
-      <td>${escapeHtml(mac)}</td>
-      <td>${escapeHtml(ip)}</td>
+      <td class="${hostClass}">${escapeHtml(host)}</td>
+      <td class="${serClass}">${escapeHtml(ser)}</td>
+      <td class="${invClass}">${escapeHtml(inv)}</td>
+      <td class="${macClass}">${escapeHtml(mac)}</td>
+      <td class="${ipClass}">${escapeHtml(ip)}</td>
       <td>${escapeHtml(room)}</td>
       <td>${statusBadge}</td>
       
@@ -1407,6 +1458,8 @@ window.deleteDevice = async function (deviceId) {
     alert(err.message || "Löschen fehlgeschlagen.");
   }
 };
+
+
 
 function closeDeviceModal() {
   hideModalById("deviceModal");

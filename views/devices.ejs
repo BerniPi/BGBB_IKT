@@ -1,8 +1,10 @@
 <%- include('partials/header') %>
 <%- include('partials/navbar', { page }) %>
 
+
+
 <div class="container-fluid mt-4">
-  <div class="card shadow-sm">
+  <div class="card shadow-sm" id="devices-card">
     <div class="card-header d-flex justify-content-between align-items-center">
 <h5 class="mb-0">
         <i class="bi bi-hdd-stack me-2"></i> Geräte
@@ -12,9 +14,9 @@
       </button>
     </div>
 
-    <!-- Filterleiste -->
     <div class="px-3 pt-3">
-      <div class="row g-2 align-items-end">
+    
+  <div class="row g-2 align-items-end">
         <div class="col-md-3">
           <label class="form-label">Kategorie</label>
           <select id="filter-category" class="form-select"></select>
@@ -24,7 +26,8 @@
           <select id="filter-model" class="form-select"></select>
         </div>
         <div class="col-md-3">
-          <label class="form-label">Raum</label>
+      
+    <label class="form-label">Raum</label>
           <select id="filter-room" class="form-select"></select>
         </div>
         <div class="col-md-3">
@@ -33,9 +36,11 @@
             <option value="active" selected>Aktiv</option>
             <option value="all">Alle (außer Ausgeschieden)</option>
             <option value="storage">Lager</option>
-            <option value="defective">Defekt</option>
+           
+ <option value="defective">Defekt</option>
             <option value="decommissioned">Ausgeschieden</option>
-            <option value="all_incl_decommissioned">Alle (inkl. Ausgeschieden)</option>
+            <option value="all_incl_decommissioned">Alle (inkl.
+Ausgeschieden)</option>
           </select>
         </div>
       </div>
@@ -52,6 +57,12 @@
             </div>
         </div>
       </div>
+    </div>
+    <div id="optional-cols-toggle-container" class="px-3 pt-3 d-none">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="toggle-optional-cols">
+            <label class="form-check-label" for="toggle-optional-cols">Zusätzliche Spalten anzeigen (Details)</label>
+        </div>
     </div>
 
     <!-- Sammelaktionen -->
@@ -124,14 +135,13 @@
               <th data-sort="category_name" class="sortable-header">Kategorie</th>
               <th data-sort="model_name" class="sortable-header">Modell</th>
 
-              <th data-sort="hostname" class="sortable-header">Hostname</th>
-
-              <th data-sort="serial_number" class="sortable-header">Seriennummer</th>
-              <th data-sort="inventory_number" class="sortable-header">Inventarnummer</th>
-              <th data-sort="mac_address" class="sortable-header">MAC-Adresse</th>
-              <th data-sort="ip_address" class="sortable-header">IP-Adresse</th>
+              <th data-sort="hostname" class="sortable-header" data-col-key="hostname">Hostname</th>
+              <th data-sort="serial_number" class="sortable-header" data-col-key="serial_number">Seriennummer</th>
+              <th data-sort="inventory_number" class="sortable-header" data-col-key="inventory_number">Inventarnummer</th>
+              <th data-sort="mac_address" class="sortable-header" data-col-key="mac_address">MAC-Adresse</th>
+              <th data-sort="ip_address" class="sortable-header" data-col-key="ip_address">IP-Adresse</th>
               <th data-sort="room" class="sortable-header">Raum</th>
-              <th data-sort="active" class="sortable-header">Status</th>
+     <th data-sort="active" class="sortable-header">Status</th>
               <th style="width:120px;">Aktion</th>
             </tr>
           </thead>
