@@ -1007,6 +1007,7 @@ async function openEditModal(deviceId, rowFromList = null) {
     setValue("device-serial_number", device.serial_number || "");
     setValue("device-inventory_number", device.inventory_number || "");
     setValue("device-notes", device.notes || "");
+    setValue("device-status", device.status || "active");
 
     // --- Kauf & Garantie (mit Fallback und Placeholder) ---
     const purchaseDateInput = document.getElementById("device-purchase_date");
@@ -1381,7 +1382,7 @@ async function onSubmitDeviceForm(e) {
     serial_number: getValue("device-serial_number") || null,
     inventory_number: getValue("device-inventory_number") || null,
     notes: getValue("device-notes") || null,
-
+    status: getValue("device-status") || "active",
     // Netzwerk
     // Netzwerk (mit validierten Werten)
     mac_address: formattedMac, // KORRIGIERT: Nimmt den validierten Wert

@@ -169,19 +169,29 @@ Ausgeschieden)</option>
           <input type="hidden" id="device-device_id">
 
 <div class="row g-3">
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label for="device-model_id" class="form-label">Modell</label>
               <select id="device-model_id" class="form-select">
                 </select>
             </div>
 
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label for="device-hostname" class="form-label">Kurzname/Netzwerkname</label>
               <input type="text" id="device-hostname" class="form-control">
             </div>
 
+            <div class="col-md-4">
+              <label for="device-status" class="form-label">Status</label>
+              <select id="device-status" class="form-select">
+                <option value="active">Aktiv</option>
+                <option value="storage">Lager</option>
+                <option value="defective">Defekt</option>
+                <option value="decommissioned">Ausgeschieden</option>
+              </select>
+            </div>
             <div class="col-md-6">
-              <label for="device-serial_number" class="form-label">Seriennummer</label>
+      
+        <label for="device-serial_number" class="form-label">Seriennummer</label>
               <input type="text" id="device-serial_number" class="form-control">
             </div>
             <div class="col-md-6">
