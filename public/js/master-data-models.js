@@ -8,8 +8,24 @@ document.addEventListener('DOMContentLoaded', () => {
     loadModels();
     populateCategorySelect(); // Modal-Dropdown füllen
     
+    // Filter-Dropdown füllen
+    populateCategoryFilter();
+
     document.getElementById('modelForm').addEventListener('submit', handleModelFormSubmit);
     bindSortEvents();
+
+    // Event Listeners für Filter
+    document.getElementById('filter-category').addEventListener('change', loadModels);
+    document.getElementById('filter-manufacturer').addEventListener('input', loadModels);
+    // Listener für die neue Checkbox
+    document.getElementById('filter-show-all').addEventListener('change', loadModels);
+
+    document.getElementById('filter-clear').addEventListener('click', () => {
+        document.getElementById('filter-category').value = '';
+        document.getElementById('filter-manufacturer').value = '';
+        document.getElementById('filter-show-all').checked = false;
+        loadModels();
+    });
 });
 
 function bindSortEvents() {
@@ -57,11 +73,49 @@ async function loadModels() {
     if (__modelSort.col) params.set("sort", __modelSort.col);
     if (__modelSort.dir) params.set("dir", __modelSort.dir);
 
+
+    // Filterwerte auslesen
+    const categoryFilter = document.getElementById('filter-category').value;
+    const manufacturerFilter = (document.getElementById('filter-manufacturer').value || '').trim().toLowerCase();
+
+    // Status der Checkbox auslesen (true, wenn "alle anzeigen" aktiv)
+    const showAllModels = document.getElementById('filter-show-all').checked;
+
     try {
         const data = await apiFetch('/api/master-data/models_with_details');
+        // Frontend-Filterung
+        const filteredData = data.filter(item => {
+            // Bedingung 1: Kategorie
+            // (item.category_id ist eine Zahl, categoryFilter ist ein String, daher '==')
+            const matchesCategory = !categoryFilter || item.category_id == categoryFilter;
 
+            // Bedingung 2: Hersteller (prüft, ob der Hersteller-Text enthalten ist)
+            const matchesManufacturer = !manufacturerFilter ||
+                (item.manufacturer || '').toLowerCase().includes(manufacturerFilter);
+
+                // Bedingung 3: Aktive Geräte
+            // Das Modell wird angezeigt, wenn:
+            // a) Die Checkbox 'showAllModels' AN ist
+            // ODER
+            // b) (Checkbox ist AUS) UND das Modell > 0 aktive Geräte hat
+            const matchesActivity = showAllModels || (item.active_devices > 0);
+            
+            return matchesCategory && matchesManufacturer && matchesActivity;
+        });
+        // filteredData statt data verwenden
+        if (filteredData.length === 0) {
+            if (data.length > 0) {
+                // Zeigen, dass Filter aktiv sind, wenn Daten vorhanden wären
+                tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted">Keine Modelle entsprechen den aktuellen Filtern.</td></tr>`;
+            } else {
+                tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted">Keine Modelle vorhanden.</td></tr>`;
+            }
+            return;
+        }
+
+        
         // Frontend-Sortierung
-        data.sort((a, b) => {
+        filteredData.sort((a, b) => {
             // HIER: __modelSort verwenden
             let valA = a[__modelSort.col];
             let valB = b[__modelSort.col];
@@ -79,13 +133,9 @@ async function loadModels() {
             if (valA > valB) return __modelSort.dir === 'asc' ? 1 : -1;
             return 0;
         });
+// filteredData statt data verwenden
+        tbody.innerHTML = filteredData.map(renderModelRow).join('');
 
-
-        if (data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted">Keine Modelle vorhanden.</td></tr>`;
-            return;
-        }
-        tbody.innerHTML = data.map(renderModelRow).join('');
     } catch (error) {
         tbody.innerHTML = `<tr><td colspan="12" class="text-center text-danger">Laden fehlgeschlagen: ${error.message}</td></tr>`;
     }
@@ -183,6 +233,22 @@ async function populateCategorySelect() {
         });
     } catch(error) {
         select.innerHTML = '<option value="">Fehler beim Laden</option>';
+    }
+}
+
+// Füllt das Kategorie-Dropdown für den Filter
+async function populateCategoryFilter() {
+    const select = document.getElementById('filter-category');
+    if(!select) return;
+    try {
+        const categories = await apiFetch('/api/master-data/device_categories');
+        // 'Alle Kategorien' (Option ist schon im HTML)
+        categories.forEach(cat => {
+            select.innerHTML += `<option value="${cat.category_id}">${escapeHtml(cat.category_name)}</option>`;
+        });
+    } catch(error) {
+        select.innerHTML = '<option value="">Fehler beim Laden</option>';
+        select.disabled = true;
     }
 }
 

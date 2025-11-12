@@ -46,7 +46,7 @@ function updateSortIndicators() {
 async function loadCategories() {
     updateSortIndicators();
     const tbody = document.getElementById('device-categories-table-body');
-    tbody.innerHTML = `<tr><td colspan="3" class="text-center">Lade...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center">Lade...</td></tr>`;
     
     try {
         const data = await apiFetch('/api/master-data/device_categories');
@@ -56,29 +56,46 @@ async function loadCategories() {
             // HIER: __catSort verwenden
             let valA = String(a[__catSort.col] || '').toLowerCase();
             let valB = String(b[__catSort.col] || '').toLowerCase();
+
+            // Zahlen-Sortierung für die neuen Spalten
+            const numericCols = ['model_count', 'active_devices', 'total_devices'];
+            if (numericCols.includes(__catSort.col)) {
+                valA = parseFloat(valA || 0);
+                valB = parseFloat(valB || 0);
+            } else {
+            // ======================== ANPASSUNG ENDE =======================
+                valA = String(valA || '').toLowerCase();
+                valB = String(valB || '').toLowerCase();
+            }
+
             if (valA < valB) return __catSort.dir === 'asc' ? -1 : 1;
             if (valA > valB) return __catSort.dir === 'asc' ? 1 : -1;
             return 0;
         });
 
         if (data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Keine Kategorien vorhanden.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Keine Kategorien vorhanden.</td></tr>`;
             return;
         }
         tbody.innerHTML = data.map(renderCategoryRow).join('');
     } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="3" class="text-center text-danger">Laden fehlgeschlagen: ${error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Laden fehlgeschlagen: ${error.message}</td></tr>`;
     }
 }
 
 function renderCategoryRow(item) {
     const name = createEditableCell('device_categories', item.category_id, 'category_name', item.category_name);
     const description = createEditableCell('device_categories', item.category_id, 'description', item.description);
+// Daten aus der API (Backend)
+    const models = item.model_count;
+    const devices = `${item.active_devices} (${item.total_devices})`;
 
     return `
         <tr>
             <td>${name}</td>
             <td>${description}</td>
+            <td>${models}</td>
+            <td>${devices}</td>
             <td>${createActionButtons('device_categories', 'category_id', item.category_id)}</td>
         </tr>
     `;

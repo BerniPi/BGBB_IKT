@@ -12,6 +12,38 @@ const createCrudEndpoints = (router, tableName, pkField) => {
     } else if (tableName === "models") {
       // Optional: Standard-Sortierung für Modelle, falls gewünscht
       // sql += ` ORDER BY model_number ASC`;
+    } else if (tableName === "device_categories") {
+        sql = `
+            SELECT
+                dc.category_id,
+                dc.category_name,
+                dc.description,
+                
+                -- Zählt die (eindeutigen) Modelle in dieser Kategorie
+                COUNT(DISTINCT m.model_id) AS model_count,
+                
+                -- Zählt alle Geräte, die über Modelle mit dieser Kategorie verknüpft sind
+                COUNT(d.device_id) AS total_devices,
+                
+                -- Zählt nur die 'aktiven' Geräte
+                COALESCE(SUM(d.status = 'active'), 0) AS active_devices
+                
+            FROM device_categories dc
+            
+            -- Verknüpfung zu Modellen
+            LEFT JOIN models m ON dc.category_id = m.category_id
+            
+            -- Verknüpfung von Modellen zu Geräten
+            LEFT JOIN devices d ON m.model_id = d.model_id
+            
+            -- Gruppierung, damit die COUNT/SUM-Funktionen pro Kategorie arbeiten
+            GROUP BY
+                dc.category_id, dc.category_name, dc.description
+            
+            -- Standard-Sortierung (wird ggf. vom Frontend überschrieben)
+            ORDER BY
+                dc.category_name ASC
+        `;
     }
     db.all(sql, [], (err, rows) => {
       if (err)
