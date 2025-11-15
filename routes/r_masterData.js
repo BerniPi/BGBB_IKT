@@ -239,32 +239,125 @@ const createCrudEndpoints = (router, tableName, pkField) => {
     });
   });
 
-  // DELETE delete
+// Helferfunktion für das eigentliche Löschen (unverändert)
+  const runDelete = (sql, id, username, tableName, pkField, oldData, res) => {
+    // ... (Diese Funktion bleibt exakt so, wie sie ist) ...
+    db.run(sql, [id], function (err) {
+      if (err) {
+        if (err.message.includes("FOREIGN KEY constraint failed")) {
+          return res.status(409).json({
+            message: "Eintrag kann nicht gelöscht werden, da er noch an anderer Stelle verwendet wird.",
+            error: "Referenzierte Daten (z.B. untergeordnete Modelle oder Geräte) vorhanden."
+          });
+        }
+        return res.status(500).json({ message: err.message });
+      }
+      logActivity(username, 'DELETE', tableName, id, oldData);
+      res.json({ message: "Erfolgreich gelöscht." });
+    });
+  };
+
+  // DELETE delete (DIESE FUNKTION WIRD ERSETZT)
   router.delete(`/${tableName}/:id`, (req, res) => {
     const { id } = req.params;
     const sql = `DELETE FROM ${tableName} WHERE ${pkField} = ?`;
     const username = req.user?.username || 'system';
 
-    // === NEU: ALTEN DATENSATZ FÜR LOGGING HOLEN ===
+    // 1. ALTEN DATENSATZ FÜR LOGGING HOLEN (unverändert)
     db.get(`SELECT * FROM ${tableName} WHERE ${pkField} = ?`, [id], (err, oldData) => {
       if (err) return res.status(500).json({ message: "DB-Fehler (Log-Check).", error: err.message });
       if (!oldData) return res.status(404).json({ message: "Eintrag nicht gefunden" });
 
-      // Jetzt das Delete ausführen
-      db.run(sql, [id], function (err) {
-        if (err) {
-          // ... (Fehlerbehandlung bleibt) ...
-          return res.status(500).json({ /*...*/ });
-        }
+      // === START: SPEZIALBEHANDLUNG (ERWEITERT) ===
+
+      // 2a. PRÜFUNG FÜR "rooms" (unverändert)
+      if (tableName === "rooms") {
+        const checkSql = `
+          SELECT
+              COUNT(DISTINCT h.device_id) as device_count,
+              GROUP_CONCAT(DISTINCT COALESCE(d.hostname, d.serial_number, 'Gerät #' || d.device_id)) as device_references
+          FROM room_device_history h
+          LEFT JOIN devices d ON h.device_id = d.device_id
+          WHERE h.room_id = ?
+        `;
         
-        // === NEU: LOGGING (DELETE) ===
-        logActivity(username, 'DELETE', tableName, id, oldData);
-        // === ENDE LOGGING ===
+        db.get(checkSql, [id], (checkErr, row) => {
+          if (checkErr) return res.status(500).json({ message: "DB-Fehler (Dependency-Check).", error: checkErr.message });
+
+          if (row && row.device_count > 0) {
+            const deviceList = (row.device_references || "").split(',').join(', ');
+            return res.status(409).json({
+              message: `Raum kann nicht gelöscht werden, da er (ggf. historisch) ${row.device_count} Geräten zugeordnet ist.`,
+              error: `Zugeordnete Geräte: ${deviceList.substring(0, 250)}${deviceList.length > 250 ? '...' : ''}`
+            });
+          }
+          
+          runDelete(sql, id, username, tableName, pkField, oldData, res);
+        });
+
+      // === 2b. NEU: PRÜFUNG FÜR "models" ===
+      } else if (tableName === "models") {
+        // Prüfen, ob Geräte diesem Modell zugewiesen sind
+        const checkSql = `
+          SELECT
+              COUNT(device_id) as device_count,
+              GROUP_CONCAT(COALESCE(hostname, serial_number, 'Gerät #' || device_id)) as device_references
+          FROM devices
+          WHERE model_id = ?
+        `;
         
-        res.json({ message: "Erfolgreich gelöscht." });
-      });
+        db.get(checkSql, [id], (checkErr, row) => {
+          if (checkErr) return res.status(500).json({ message: "DB-Fehler (Dependency-Check).", error: checkErr.message });
+
+          // WENN GERÄTE GEFUNDEN WURDEN -> Löschen blockieren
+          if (row && row.device_count > 0) {
+            const deviceList = (row.device_references || "").split(',').join(', ');
+            return res.status(409).json({
+              message: `Modell kann nicht gelöscht werden, da es ${row.device_count} Geräten zugeordnet ist.`,
+              error: `Zugeordnete Geräte: ${deviceList.substring(0, 250)}${deviceList.length > 250 ? '...' : ''}`
+            });
+          }
+          
+          // WENN KEINE GERÄTE -> Normales Löschen
+          runDelete(sql, id, username, tableName, pkField, oldData, res);
+        });
+        
+      // === 2c. NEU: PRÜFUNG FÜR "device_categories" ===
+      } else if (tableName === "device_categories") {
+        // Prüfen, ob Modelle dieser Kategorie zugewiesen sind
+        const checkSql = `
+          SELECT
+              COUNT(model_id) as model_count,
+              GROUP_CONCAT(COALESCE(model_name, model_number)) as model_references
+          FROM models
+          WHERE category_id = ?
+        `;
+        
+        db.get(checkSql, [id], (checkErr, row) => {
+          if (checkErr) return res.status(500).json({ message: "DB-Fehler (Dependency-Check).", error: checkErr.message });
+
+          // WENN MODELLE GEFUNDEN WURDEN -> Löschen blockieren
+          if (row && row.model_count > 0) {
+            const modelList = (row.model_references || "").split(',').join(', ');
+            return res.status(409).json({
+              message: `Kategorie kann nicht gelöscht werden, da sie ${row.model_count} Modellen zugeordnet ist.`,
+              error: `Zugeordnete Modelle: ${modelList.substring(0, 250)}${modelList.length > 250 ? '...' : ''}`
+            });
+          }
+          
+          // WENN KEINE MODELLE -> Normales Löschen
+          runDelete(sql, id, username, tableName, pkField, oldData, res);
+        });
+
+      } else {
+        // === ENDE: SPEZIALBEHANDLUNG ===
+        
+        // 3. Für alle anderen Tabellen (z.B. accessories, users): Normales Löschen
+        runDelete(sql, id, username, tableName, pkField, oldData, res);
+      }
     });
   });
+
 
   // Raum verschieben (unverändert)
   router.post("/rooms/:id/move", (req, res) => {
