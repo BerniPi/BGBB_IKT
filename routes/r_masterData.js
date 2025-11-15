@@ -8,7 +8,24 @@ const createCrudEndpoints = (router, tableName, pkField) => {
   router.get(`/${tableName}`, (req, res) => {
     let sql = `SELECT * FROM ${tableName}`;
     if (tableName === "rooms") {
-      sql += ` ORDER BY floor ASC, sort_order ASC, room_name ASC`;
+      // SQL für Räume: Zählt Geräte, die *aktuell* (to_date IS NULL)
+      // in diesem Raum sind.
+      sql = `
+        SELECT
+            r.*,
+            COALESCE(d.device_count, 0) AS active_device_count
+        FROM rooms r
+        LEFT JOIN (
+            -- Subquery, um die Zählung pro Raum zu ermitteln
+            SELECT
+                h.room_id,
+                COUNT(DISTINCT h.device_id) AS device_count
+            FROM room_device_history h
+            WHERE h.to_date IS NULL -- Nur aktuell im Raum
+            GROUP BY h.room_id
+        ) d ON r.room_id = d.room_id
+        ORDER BY r.floor ASC, r.sort_order ASC, r.room_name ASC
+      `;
     } else if (tableName === "models") {
       // Optional: Standard-Sortierung für Modelle, falls gewünscht
       // sql += ` ORDER BY model_number ASC`;

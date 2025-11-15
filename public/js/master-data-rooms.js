@@ -10,17 +10,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // Lädt und rendert die Räume
 async function loadRooms() {
     const tbody = document.getElementById('rooms-table-body');
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center">Lade...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center">Lade...</td></tr>`;
 
     try {
         const data = await apiFetch('/api/master-data/rooms');
         if (data.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Keine Räume vorhanden.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Keine Räume vorhanden.</td></tr>`;
             return;
         }
         tbody.innerHTML = renderRoomsTable(data);
     } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Laden fehlgeschlagen.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Laden fehlgeschlagen.</td></tr>`;
     }
 }
 
@@ -31,7 +31,7 @@ function renderRoomsTable(data) {
     data.forEach((item, index) => {
         if (item.floor !== currentFloor) {
             currentFloor = item.floor;
-            html += `<tr class="table-light"><td colspan="6"><strong>Stockwerk: ${currentFloor === null ? 'Nicht definiert' : currentFloor}</strong></td></tr>`;
+            html += `<tr class="table-light"><td colspan="7"><strong>Stockwerk: ${currentFloor === null ? 'Nicht definiert' : currentFloor}</strong></td></tr>`;
         }
         
         const prevItem = data[index - 1], nextItem = data[index + 1];
@@ -45,10 +45,16 @@ function renderRoomsTable(data) {
         const editableFloorCell = createEditableCell('rooms', item.room_id, 'floor', item.floor);
         const editableSortCell = createEditableCell('rooms', item.room_id, 'sort_order', item.sort_order);
 
+        const deviceCount = item.active_device_count || 0;
+        const countBadge = deviceCount > 0 
+            ? `<span class="badge bg-primary">${deviceCount}</span>` 
+            : `<span class="text-muted">0</span>`;
+
         html += `<tr data-room-id="${item.room_id}">
             <td>${upArrow} ${downArrow}</td>
             <td>${editableNumberCell}</td>
             <td>${editableNameCell}</td>
+            <td>${countBadge}</td>
             <td>${editableFloorCell}</td>
             <td>${editableSortCell}</td>
             <td>${createActionButtons('rooms', 'room_id', item.room_id)}</td>
