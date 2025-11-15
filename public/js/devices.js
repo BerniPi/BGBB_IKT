@@ -52,6 +52,10 @@ function escapeHtml(s) {
 // NEU: Globaler Raum-Status (Session)
 // ====================================================
 const GLOBAL_ROOM_KEY = 'globalCurrentRoomId';
+const RH_LAST_FROM_KEY = 'rh_last_from';
+const RH_LAST_TO_KEY = 'rh_last_to';
+const RH_LAST_ROOM_KEY = 'rh_last_room';
+const RH_LAST_NOTES_KEY = 'rh_last_notes';
 
 /**
  * Speichert die ID des aktuell ausgewählten Raums in der Browser-Session.
@@ -1077,17 +1081,18 @@ setValue("device-ip_address", currentIp);
 // Raum-Historie + Auswahl
     await populateRoomHistoryRoomSelect(); // Sicherstellen, dass Räume geladen sind
 
+    show("room-history-container");
+    const historyBody = document.getElementById("room-history-body");
+
     if (device.device_id) {
       // --- BESTEHENDES GERÄT ---
-      show("room-history-container"); // Zeige den ganzen Block an
       await loadRoomHistory(device.device_id);
     } else {
       // --- NEUES GERÄT ---
-      hide("room-history-container"); // Verstecke den ganzen Block
-
-      // (Optional, aber sauber): Den Tabelleninhalt trotzdem leeren
-      const historyBody = document.getElementById("room-history-body");
-      if (historyBody) historyBody.innerHTML = "";
+      // Leere die Tabelle (falls noch was von vorher drin war)
+      if (historyBody) {
+        historyBody.innerHTML = ""; // Wichtig: Leeren
+      }
     }
 
     // Modal öffnen
@@ -1159,6 +1164,89 @@ function updateNetworkFieldVisibility() {
   }
 }
 
+/**
+ * Speichert die zuletzt eingegebenen Raum-Daten für die "Neu"-Zeile.
+ * @param {object} data - { from_date, to_date, room_id, notes }
+ */
+function saveLastRoomHistoryInput(data) {
+  if (!data) return;
+  sessionStorage.setItem(RH_LAST_FROM_KEY, data.from_date || '');
+  sessionStorage.setItem(RH_LAST_TO_KEY, data.to_date || '');
+  sessionStorage.setItem(RH_LAST_ROOM_KEY, data.room_id || '');
+  sessionStorage.setItem(RH_LAST_NOTES_KEY, data.notes || '');
+}
+
+/**
+ * Holt die zuletzt verwendeten Raum-Daten aus der Session.
+ * @returns {object} { from, to, room_id, notes }
+ */
+function getLastRoomHistoryInput() {
+  return {
+    from: sessionStorage.getItem(RH_LAST_FROM_KEY) || '',
+    to: sessionStorage.getItem(RH_LAST_TO_KEY) || '',
+    room_id: sessionStorage.getItem(RH_LAST_ROOM_KEY) || '',
+    notes: sessionStorage.getItem(RH_LAST_NOTES_KEY) || ''
+  };
+}
+
+/**
+ * Helper: Liest Daten aus einer (neuen oder bestehenden) <TR> der Raum-Historie.
+ * @param {HTMLElement} tr - Die <tr>, aus der gelesen werden soll.
+ */
+function readDataFromHistoryRow(tr) {
+  const from = tr.querySelector(".rh-from").value || null;
+  const to = tr.querySelector(".rh-to").value || null;
+  const room_id = tr.querySelector(".rh-room-select").value || null;
+  const notes = tr.querySelector(".rh-notes").value || null;
+  return { from_date: from, to_date: to, room_id, notes };
+}
+
+/**
+ * Erstellt das HTML für eine (neue oder bestehende) editierbare Raum-Historie-Zeile.
+ * @param {object} data - Die Daten für die Zeile
+ * @param {boolean} isNew - Ob es eine "neue" Zeile (mit Abbrechen-Button) ist
+ */
+function renderRoomHistoryRowHtml(data = {}, isNew = false) {
+  const from = (data.from || data.from_date || "").slice(0, 10);
+  const to = (data.to || data.to_date || "").slice(0, 10);
+  const notes = data.notes || "";
+  const room_id = data.room_id || null;
+  const historyId = data.history_id || null;
+
+  // Raum-Dropdown generieren (Logik aus loadRoomHistory kopiert)
+  const roomSelectHtml = `
+    <select class="form-select form-select-sm rh-room-select">
+      <option value="">Raum wählen...</option>
+      ${roomCache
+        .map((r) => {
+          const label =
+            (r.room_number ? `${r.room_number} — ` : "") +
+            (r.room_name || `Raum ${r.room_id}`);
+          const selected = r.room_id == room_id ? "selected" : "";
+          return `<option value="${r.room_id}" ${selected}>${escapeHtml(label)}</option>`;
+        })
+        .join("")}
+    </select>
+  `;
+
+  // Button-Spalte: "Löschen" (existing) oder "Abbrechen" (new)
+  const actionBtnHtml = isNew
+    ? `<button type="button" class="btn btn-sm btn-outline-secondary rh-cancel-new ms-1" title="Abbrechen"><i class="bi bi-x-lg"></i></button>`
+    : `<button type="button" class="btn btn-sm btn-outline-danger rh-del ms-1">Löschen</button>`;
+
+  // data-history-id nur wenn vorhanden, class="new-history-row" nur wenn neu
+  return `
+    <tr ${historyId ? `data-history-id="${historyId}"` : ''} ${isNew ? 'class="new-history-row"' : ''}>
+      <td><input type="date" class="form-control rh-from" value="${escapeAttr(from)}"></td>
+      <td><input type="date" class="form-control rh-to" value="${escapeAttr(to)}"></td>
+      <td>${roomSelectHtml}</td>
+      <td><input type="text" class="form-control rh-notes" value="${escapeAttr(notes)}"></td>
+      <td class="text-nowrap">${actionBtnHtml}</td>
+    </tr>
+  `;
+}
+
+
 // ----------------------------------------------------
 // Raum-Historie (im Modal)
 // ----------------------------------------------------
@@ -1175,50 +1263,24 @@ async function populateRoomHistoryRoomSelect() {
     .join("");
 }
 
-// devices.js
-
 async function loadRoomHistory(deviceId) {
   const tbody = document.getElementById("room-history-body");
   if (!tbody) return;
   tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Lade Historie…</td></tr>`;
   const rows = await apiFetch(`/api/devices/${deviceId}/rooms-history`);
+  
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Keine Einträge</td></tr>`;
     return;
   }
+  
+  // Verwende den neuen Renderer
   tbody.innerHTML = rows
-    .map((h) => {
-      // ===  Raum-Dropdown generieren ===
-      const roomSelectHtml = `
-        <select class="form-select form-select-sm rh-room-select">
-          ${roomCache
-            .map((r) => {
-              const label =
-                (r.room_number ? `${r.room_number} — ` : "") +
-                (r.room_name || `Raum ${r.room_id}`);
-              // Wähle den Raum aus, der mit der ID des Historien-Eintrags übereinstimmt
-              const selected = r.room_id == h.room_id ? "selected" : "";
-              return `<option value="${r.room_id}" ${selected}>${escapeHtml(label)}</option>`;
-            })
-            .join("")}
-        </select>
-      `;
-      // === ENDE NEU ===
-
-      return `
-        <tr data-history-id="${h.history_id}"> <td><input type="date" class="form-control rh-from" value="${escapeAttr((h.from_date || "").slice(0, 10))}"></td>
-          <td><input type="date" class="form-control rh-to" value="${escapeAttr((h.to_date || "").slice(0, 10))}"></td>
-          <td>${roomSelectHtml}</td> <td><input type="text" class="form-control rh-notes" value="${escapeAttr(h.notes || "")}"></td>
-          <td class="text-nowrap">
-            <button type="button" class="btn btn-sm btn-outline-danger rh-del ms-1">Löschen</button>
-          </td>
-        </tr>
-      `;
-    })
+    .map((h) => renderRoomHistoryRowHtml(h, false)) // false = not new
     .join("");
 }
 
-// devices.js
+
 
 function bindRoomHistoryEvents() {
   
@@ -1241,84 +1303,136 @@ function bindRoomHistoryEvents() {
     }
   });
 
-  // Hinzufügen-Zeile (Bleibt unverändert)
+  // NEU: Abbrechen-Button für neue Zeile
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".rh-cancel-new");
+    if (btn) {
+      btn.closest("tr.new-history-row")?.remove();
+    }
+  });
+
+  // Hinzufügen-Button (ersetzt die alte Logik)
   const addBtn = document.getElementById("rh-add");
   if (addBtn) {
-    addBtn.addEventListener("click", async () => {
-      const deviceId = getValue("device-device_id");
-      const room_id = getValue("rh-room") || null;
-      const from = getValue("rh-from") || null;
-      const to = getValue("rh-to") || null;
-      const notes = getValue("rh-notes") || null;
-
-      if (!deviceId) return alert("Kein Gerät im Bearbeitungsdialog.");
-      if (!room_id || !from)
-        return alert("Bitte mindestens Raum und Von-Datum angeben.");
-
-      try {
-        await apiFetch(`/api/devices/${deviceId}/rooms-history`, {
-          method: "POST",
-          body: JSON.stringify({
-            room_id,
-            from_date: from,
-            to_date: to,
-            notes,
-          }),
-        });
-        // Eingabezeile zurücksetzen
-        setValue("rh-from", "");
-        setValue("rh-to", "");
-        setValue("rh-notes", "");
-        await loadRoomHistory(deviceId);
-        await loadDevices(); // Auch die Geräteliste neu laden, falls Raumänderung sichtbar ist
-      } catch (err) {
-        alert(err.message || "Anlegen fehlgeschlagen.");
-      }
-    });
+    addBtn.addEventListener("click", () => onAddNewRoomHistoryRow());
   }
 }
 
 /**
- *  Speichert alle geänderten Raum-Historie-Zeilen auf einmal.
+ * Reagiert auf Klick auf "Neue Zeile hinzufügen" (+)
+ * Speichert die *vorherige* neue Zeile (falls vorhanden) und fügt
+ * dann eine newe, leere Zeile (mit Prefills) hinzu.
+ */
+async function onAddNewRoomHistoryRow() {
+  const deviceId = getValue("device-device_id");
+  const tbody = document.getElementById("room-history-body");
+  const existingNewRow = tbody.querySelector("tr.new-history-row");
+
+  // 1. Prüfen, ob schon eine neue Zeile da ist
+  if (existingNewRow) {
+    const data = readDataFromHistoryRow(existingNewRow);
+
+    // 2. Validieren
+    if (!data.room_id || !data.from_date) {
+      alert("Bitte füllen Sie die aktuelle neue Zeile (Raum, Von-Datum), bevor Sie eine weitere hinzufügen.");
+      existingNewRow.querySelector(".rh-from").focus();
+      return;
+    }
+
+    // 3. Speichern (wenn Gerät schon existiert)
+    if (deviceId) {
+      try {
+        // Sende POST
+        const newEntry = await apiFetch(`/api/devices/${deviceId}/rooms-history`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        });
+
+        // Erfolgreich gespeichert: Ersetze die "neue" Zeile durch eine "reale"
+        const realRowHtml = renderRoomHistoryRowHtml({ ...data, history_id: newEntry.history_id }, false);
+        existingNewRow.outerHTML = realRowHtml;
+        
+        // Speichere die Eingaben für den nächsten Klick (Goal 1)
+        saveLastRoomHistoryInput(data);
+
+      } catch (err) {
+        alert(err.message || "Anlegen fehlgeschlagen.");
+        return; // Stopp, wenn Speichern fehlschlägt
+      }
+    } else {
+      // Neues Gerät (noch keine ID): Wir können nicht speichern.
+      // Wir markieren die Zeile als "pending"
+      existingNewRow.classList.remove("new-history-row");
+      existingNewRow.classList.add("pending-new-history-row"); // Neuer Marker
+      existingNewRow.querySelector(".rh-cancel-new")?.remove(); // Kein Abbrechen mehr möglich
+      
+      // Speichere die Eingaben für den nächsten Klick (Goal 1)
+      saveLastRoomHistoryInput(data);
+    }
+  }
+
+  // 4. In jedem Fall: Füge eine *weitere* neue, leere Zeile hinzu
+  const lastData = getLastRoomHistoryInput(); // Goal 1: Hol die gemerkten Daten
+  const newRowHtml = renderRoomHistoryRowHtml(lastData, true); // true = isNew
+  tbody.insertAdjacentHTML("beforeend", newRowHtml);
+}
+
+
+/**
+ * Speichert alle geänderten (PUT) UND alle neuen (POST) Raum-Historie-Zeilen.
  * Wird vom globalen Modal-Speichern-Knopf aufgerufen.
  */
-async function saveRoomHistoryChanges(deviceId) {
+async function saveAllRoomHistoryChanges(deviceId) {
   const tbody = document.getElementById("room-history-body");
   if (!tbody) return;
 
-  const rows = tbody.querySelectorAll("tr[data-history-id]");
-  if (!rows.length) return; // Nichts zu speichern
+  const promises = [];
 
-  const updatePromises = [];
+  // 1. NEUE Zeilen (POST)
+  const newRows = tbody.querySelectorAll(".new-history-row, .pending-new-history-row");
+  let lastSavedData = null;
 
-  for (const tr of rows) {
+  for (const tr of newRows) {
+    const data = readDataFromHistoryRow(tr);
+    // Nur speichern, wenn die Zeile gültig ist
+    if (data.room_id && data.from_date) {
+      const promise = apiFetch(`/api/devices/${deviceId}/rooms-history`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      promises.push(promise);
+      lastSavedData = data; // Merke dir die zuletzt gespeicherten Daten
+    }
+  }
+
+  // 2. BESTEHENDE Zeilen (PUT)
+  const existingRows = tbody.querySelectorAll("tr[data-history-id]");
+  for (const tr of existingRows) {
     const historyId = tr.getAttribute("data-history-id");
-    
-    // Daten aus den <input> und <select> der Zeile lesen
-    const from = tr.querySelector(".rh-from").value || null;
-    const to = tr.querySelector(".rh-to").value || null;
-    const notes = tr.querySelector(".rh-notes").value || null;
-    const room_id = tr.querySelector(".rh-room-select").value || null;
+    const data = readDataFromHistoryRow(tr);
 
     const payload = {
-      room_id: room_id,
-      from_date: from,
-      to_date: to,
-      notes: notes,
+      room_id: data.room_id,
+      from_date: data.from_date,
+      to_date: data.to_date,
+      notes: data.notes,
     };
-
-    // Erstelle ein Promise für jedes Update
+    
     const promise = apiFetch(`/api/devices/${deviceId}/rooms-history/${historyId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     });
-    
-    updatePromises.push(promise);
+    promises.push(promise);
   }
 
-  // Warte, bis alle (parallelen) Updates abgeschlossen sind
+  // 3. Alle (parallelen) Updates/Creates ausführen
   try {
-    await Promise.all(updatePromises);
+    await Promise.all(promises);
+    
+    // Goal 1: Speichere die Daten der letzten gültigen *neuen* Zeile
+    if (lastSavedData) {
+      saveLastRoomHistoryInput(lastSavedData);
+    }
   } catch (err) {
     // Wirf den Fehler weiter, damit die Haupt-Submit-Funktion ihn fangen kann
     throw new Error(`Fehler beim Speichern der Raum-Historie: ${err.message}`);
@@ -1430,9 +1544,9 @@ async function onSubmitDeviceForm(e) {
       }
     }
 
-    // 2. ===  Raum-Historie speichern ===
-    if (isUpdate && currentDeviceId) {
-      await saveRoomHistoryChanges(currentDeviceId);
+   // 2. === Raum-Historie speichern (NEU + PUT) ===
+    if (currentDeviceId) {
+      await saveAllRoomHistoryChanges(currentDeviceId);
     }
     
     // --- KORREKTUR START ---
