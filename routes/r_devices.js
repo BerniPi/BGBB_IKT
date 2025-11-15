@@ -526,42 +526,69 @@ router.delete("/:id", (req, res) => {
  * Setzt 'last_inspected' für ein Gerät auf ein bestimmtes Datum (oder heute).
  */
 router.put("/:id/mark-inspected", (req, res) => {
+  const username = req.user.username || "system";
   const { id } = req.params;
-  const { date } = req.body; // Erlaube optionales Datum, falls in der Vergangenheit nachgetragen
+  const { date } = req.body; // Erlaube optionales Datum
 
-  // Wenn kein Datum gesendet wird, nimm das heutige
   const inspectionDate =
     (date && String(date).slice(0, 10)) ||
     new Date().toISOString().slice(0, 10);
 
-  const sql = "UPDATE devices SET last_inspected = ? WHERE device_id = ?";
+  // --- SCHRITT 1: ALTEN WERT FÜR LOGGING HOLEN ---
+  db.get(
+    "SELECT last_inspected FROM devices WHERE device_id = ?",
+    [id],
+    (err, oldDevice) => {
+      if (err) {
+        return res
+          .status(500)
+          .json({ message: "DB-Fehler (Log-Check)", error: err.message });
+      }
+      if (!oldDevice) {
+        return res.status(404).json({ message: "Gerät nicht gefunden." });
+      }
+      
+      const oldDate = oldDevice.last_inspected;
 
-  db.run(sql, [inspectionDate, id], function (err) {
-    if (err) {
-      return res.status(500).json({ message: err.message });
-    }
-    if (this.changes === 0) {
-      return res.status(404).json({ message: "Gerät nicht gefunden." });
-    }
+      // --- SCHRITT 2: UPDATE DURCHFÜHREN ---
+      const sql = "UPDATE devices SET last_inspected = ? WHERE device_id = ?";
+      db.run(sql, [inspectionDate, id], function (err) {
+        if (err) {
+          return res.status(500).json({ message: err.message });
+        }
+        // (this.changes === 0 sollte nie passieren, da wir oben schon 404 zurückgeben)
 
-    try {
-      logActivity(
-        req.user.username,
-        'UPDATE',
-        'device',
-        id,
-        { last_inspected: inspectionDate }
-      );
-    } catch (logErr) {
-      console.error("Fehler beim Schreiben des Activity Logs (mark-inspected):", logErr);
-    }
-    // --- ENDE NEU ---
+        // --- SCHRITT 3: LOGGING (mit Alt/Neu-Vergleich) ---
+        try {
+          const details = {
+            last_inspected: { old: oldDate, new: inspectionDate },
+          };
+          
+          // Logge nur, wenn sich das Datum wirklich geändert hat
+          if (String(oldDate ?? "") !== String(inspectionDate ?? "")) {
+            logActivity(
+              req.user.username,
+              'UPDATE',
+              'device',
+              id,
+              details // { last_inspected: { old: "...", new: "..." } }
+            );
+          }
+        } catch (logErr) {
+          console.error(
+            "Fehler beim Schreiben des Activity Logs (mark-inspected):",
+            logErr,
+          );
+        }
+        // --- ENDE SCHRITT 3 ---
 
-    res.json({
-      message: "Gerät als kontrolliert markiert.",
-      date: inspectionDate,
-    });
-  });
+        res.json({
+          message: "Gerät als kontrolliert markiert.",
+          date: inspectionDate,
+        });
+      });
+    },
+  );
 });
 
 // ... (vor der Sektion RAUM-HISTORIE)

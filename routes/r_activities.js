@@ -1,16 +1,16 @@
-// z.B. in routes/r_system.js oder einer neuen r_activity.js
+// routes/r_activities.js
 const express = require("express");
 const { db } = require("../database");
 const router = express.Router();
 
 /**
- * GET /api/activity-log
- * Ruft die letzten N Aktivitätseinträge ab.
+ * GET /api/activity/log
+ * Ruft die letzten N Aktivitätseinträge UND eine Liste aller Räume ab.
  */
 router.get("/log", (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 100; // Standard: 100 Einträge
 
-const sql = `
+  const sqlLogs = `
     SELECT
       log.*,
       
@@ -45,12 +45,29 @@ const sql = `
     ORDER BY log.timestamp DESC
     LIMIT ?
   `;
+  
+  const sqlRooms = `SELECT room_id, room_name, room_number FROM rooms`;
 
-  db.all(sql, [limit], (err, rows) => {
+  // 1. Logs abrufen
+  db.all(sqlLogs, [limit], (err, logs) => {
     if (err) {
       return res.status(500).json({ message: "Log konnte nicht geladen werden.", error: err.message });
     }
-    res.json(rows);
+    
+    // 2. Räume abrufen
+    db.all(sqlRooms, [], (roomErr, rooms) => {
+      if (roomErr) {
+        // Bei Fehler hier: Logs trotzdem senden, aber mit leeren Räumen
+        console.error("Fehler beim Laden der Räume für das Log:", roomErr);
+        return res.json({ logs: logs, rooms: [] });
+      }
+      
+      // 3. Beides kombiniert senden
+      res.json({ 
+        logs: logs, 
+        rooms: rooms 
+      });
+    });
   });
 });
 

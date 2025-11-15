@@ -1,6 +1,8 @@
- // NEU: Übersetzungs-Map für Detail-Felder
+// public/js/activities.js
+
+// NEU: Übersetzungs-Map für Detail-Felder
 const detailKeyTranslations = {
-// Gerätefelder (unverändert)
+// ... (deine ganzen Übersetzungen bleiben unverändert) ...
   model_id: "Modell",
   hostname: "Hostname",
   serial_number: "Seriennummer",
@@ -14,96 +16,105 @@ const detailKeyTranslations = {
   warranty_months: "Garantie (Monate)",
   last_cleaned: "Zuletzt gereinigt",
   last_inspected: "Zuletzt kontrolliert",
-  
-  // Log-spezifische Felder (aus DELETE)
   model_name: "Modell",
   last_room: "Letzter Raum",
-
-  // --- NEU: Task-Felder ---
   task: "Aufgabe",
   task_id: "Task ID",
   category: "Kategorie",
   priority: "Priorität",
-  status: "Status", // 'status' ist jetzt für Tasks & Geräte gültig
+  status: "Status",
   date: "Datum",
   reported_by: "Gemeldet von",
   assigned_to: "Zugewiesen an",
   completed_at: "Erledigt am",
   completed_by: "Erledigt von",
-  notes: "Notizen", // 'notes' ist jetzt für Tasks & Geräte gültig
+  notes: "Notizen",
   room_id: "Raum",
-  
-  // Task-Löschfelder (falls sie auftauchen)
   created_at: "Erstellt am",
   updated_at: "Geändert am",
   entered_by: "Erstellt von",
-
-  // Bulk Felder
   action: "Aktion",
   count: "Anzahl",
+  from_date: "Ab-Datum",
+  to_date: "Bis-Datum",
+  deleted_entry: "Gelöschter Eintrag",
+  delete_room_history: "Raum-Eintrag löschen"
 };
 
 /**
  * NEU: Helfer-Funktion zum Übersetzen
- * Nimmt einen DB-Key und gibt das deutsche Label zurück.
- * @param {string} key - z.B. "serial_number"
- * @returns {string} - z.B. "Seriennummer"
+ * (unverändert)
  */
 function translateDetailKey(key) {
-  // Schlägt in der Map nach. Wenn nichts gefunden wird,
-  // wird der Original-Key (sicher escaped) zurückgegeben.
   return detailKeyTranslations[key] || escapeHtml(key);
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
+// === NEU: Regex-Helfer für Datumsformatierung ===
+// Erkennt YYYY-MM-DD
+const isoDateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+// Erkennt YYYY-MM-DDTHH:mm... (voller Zeitstempel)
+const isoTimestampRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+// ==================================================
 
+document.addEventListener("DOMContentLoaded", async () => {
+  // ... (dein ganzer DOMContentLoaded-Code bleibt unverändert) ...
  
-  // apiFetch ist global verfügbar (aus devices.js)
   if (typeof apiFetch === "undefined") {
     console.error("apiFetch ist nicht definiert. Stelle sicher, dass main.js oder devices.js geladen wird.");
     return;
   }
 
   const tbody = document.getElementById("log-table-body");
- tbody.innerHTML = '<tr><td colspan="6" class="text-center">Lade Protokoll...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6" class="text-center">Lade Protokoll...</td></tr>';
+  
   try {
-    const logs = await apiFetch("/api/activity/log?limit=100");
+    const response = await apiFetch("/api/activity/log?limit=100");
+    
+    if (!response || !response.logs) {
+      throw new Error("Ungültige Antwort vom Server erhalten.");
+    }
+    
+    const logs = response.logs;
+    const rooms = response.rooms || [];
 
-   if (!logs.length) {
-      // --- MODIFIZIERT: colspan="6" ---
+    const roomLookup = new Map();
+    for (const room of rooms) {
+      const rName = room.room_name || '';
+      const rNum = room.room_number || '';
+      const roomLabel = rNum ? `${rNum} (${rName})` : (rName || String(room.room_id));
+      roomLookup.set(String(room.room_id), escapeHtml(roomLabel.trim().replace(" ()", "")));
+    }
+
+
+    if (!logs.length) {
       tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Keine Einträge gefunden.</td></tr>';
       return;
     }
 
-    tbody.innerHTML = logs.map(renderLogEntry).join("");
+    tbody.innerHTML = logs.map(log => renderLogEntry(log, roomLookup)).join("");
 
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Fehler: ${err.message}</td></tr>`;
   }
 
-  // === NEU: Globaler Klick-Listener für die Tabelle ===
   tbody.addEventListener("click", (e) => {
-    // Finde die geklickte TR-Zeile
     const row = e.target.closest("tr.clickable-log-row");
-    if (!row) return; // Klick war nicht auf einer klickbaren Zeile
+    if (!row) return; 
 
     const type = row.dataset.entityType;
     const id = row.dataset.entityId;
 
-    // Weiterleiten zur entsprechenden Seite mit einem URL-Parameter
     if (type === "device" && id) {
       window.location.href = `/devices?edit_id=${id}`;
     } else if (type === "task" && id) {
       window.location.href = `/tasks?edit_id=${id}`;
     }
   });
-  // === ENDE NEU ===
 });
 
-// activities.js
 
-function renderLogEntry(log) {
-  // 1. Zeitstempel, Benutzer, Aktion (unverändert)
+function renderLogEntry(log, roomLookup = new Map()) {
+  // ... (Zeitstempel, Benutzer, Aktion, Entity, Raum... bleibt alles unverändert) ...
   const ts = new Date(log.timestamp).toLocaleString('de-DE', {
     day: '2-digit',
     month: '2-digit',
@@ -113,10 +124,8 @@ function renderLogEntry(log) {
   });
   const user = escapeHtml(log.username || 'Unbekannt');
   const actionBadge = getActionBadge(log.action_type);
-
-  // 2. Aktionstyp und Details (aus JSON) FRÜHZEITIG bestimmen
   const isDeleteAction = log.action_type.toUpperCase() === 'DELETE';
-  let detailsData = null; // Wird die geparsten JSON-Daten enthalten
+  let detailsData = null; 
   
   if (log.details_json) {
     try {
@@ -126,13 +135,10 @@ function renderLogEntry(log) {
     }
   }
 
-  // 3. Objekt (entity) und Raum (room) bestimmen
   let entity = 'System';
   let room = '<span class="text-muted">—</span>';
 
   if (log.entity_type === 'device') {
-    
-    // Fall A: DELETE-Aktion. Daten MÜSSEN aus den Details (detailsData) kommen.
     if (isDeleteAction && detailsData) {
       const model = escapeHtml(detailsData.model_name || 'Gelöschtes Modell');
       const identifier = escapeHtml(
@@ -142,12 +148,10 @@ function renderLogEntry(log) {
         `ID ${log.entity_id}`
       );
       entity = `${model}<br><small class="text-muted">${identifier}</small>`;
-      
       if (detailsData.last_room) {
         room = escapeHtml(detailsData.last_room);
       }
     } 
-    // Fall B: CREATE/UPDATE-Aktion. Daten kommen aus dem LEFT JOIN.
     else if (!isDeleteAction) { 
       const model = escapeHtml(log.model_name || 'Unbek. Modell');
       const serial = escapeHtml(log.serial_number || `ID ${log.entity_id}`);
@@ -159,7 +163,6 @@ function renderLogEntry(log) {
         room = rNum ? `${rNum} (${rName})` : rName;
       }
     }
-  
   } else if (log.entity_type === 'task') {
     entity = escapeHtml(log.task_name || `Task ID ${log.entity_id}`);
     if (log.task_room_name || log.task_room_number) {
@@ -167,7 +170,6 @@ function renderLogEntry(log) {
       const rNum = escapeHtml(log.task_room_number || '');
       room = rNum ? `${rNum} (${rName})` : rName;
     }
-
   } else if (log.entity_type) {
     entity = escapeHtml(log.entity_type);
     if (log.entity_id) {
@@ -175,7 +177,6 @@ function renderLogEntry(log) {
     }
   }
 
-  // 4. Klickbare Zeile (Logik unverändert)
   let rowProps = "";
   if (log.entity_type === "device" && log.entity_id && !isDeleteAction) {
     rowProps = ` data-entity-type="device" data-entity-id="${log.entity_id}" class="clickable-log-row" title="Gerät ID ${log.entity_id} bearbeiten"`;
@@ -183,18 +184,56 @@ function renderLogEntry(log) {
     rowProps = ` data-entity-type="task" data-entity-id="${log.entity_id}" class="clickable-log-row" title="Task ID ${log.entity_id} bearbeiten"`;
   }
 
-  // 5. Details-Spalte (verwendet 'detailsData' wieder)
+
+  // 5. Details-Spalte (HIER IST DIE ÄNDERUNG)
   let details = '<span class="text-muted">—</span>';
   if (detailsData) {
     try {
       const d = detailsData;
       const action = log.action_type.toUpperCase();
 
-      // Helfer-Funktion (unverändert)
-      const formatVal = (val) => {
+      // === MODIFIZIERT: formatVal kann jetzt DATUMSANGABEN formatieren ===
+      const formatVal = (val, key) => {
+        // 1. Raum-ID-Übersetzung (wie bisher)
+        if (key === 'room_id' && (val !== null && val !== undefined && val !== "")) {
+          const roomName = roomLookup.get(String(val));
+          if (roomName) {
+            return roomName; // Gibt "101 (Lager)" zurück (ist bereits escaped)
+          }
+          return escapeHtml(`[Gelöschter Raum: ID ${val}]`);
+        }
+
+        // 2. Leere Werte (wie bisher)
         if (val === null || val === undefined || val === "") {
           return '<span class="text-muted fst-italic">[leer]</span>';
         }
+
+        // 3. === NEU: Datumsformatierung ===
+        if (typeof val === 'string') {
+          // Fall A: Reiner Datumsstring (YYYY-MM-DD)
+          if (isoDateOnlyRegex.test(val)) {
+            // Einfache String-Umkehrung, vermeidet Zeitzonenprobleme
+            const [y, m, d] = val.split('-');
+            return `${d}.${m}.${y}`; 
+          }
+          
+          // Fall B: Voller Zeitstempel (z.B. created_at, updated_at)
+          if (isoTimestampRegex.test(val)) {
+            try {
+               // formatiert als "15.11.2025, 10:30"
+               return new Date(val).toLocaleString('de-DE', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+               });
+            } catch (e) { /* fallback zum Standard-String */ }
+          }
+        }
+        // === ENDE NEU ===
+
+        // 4. Bisherige Logik für alle anderen Strings
         let s = String(val);
         if (s.length > 50 && s.includes(' ')) {
            s = s.substring(0, 50) + '...';
@@ -205,15 +244,20 @@ function renderLogEntry(log) {
       const rowStyle = 'style="font-size: 0.9em; line-height: 1.3;"';
       let changesHtml = '';
 
+      // Der Rest der renderLogEntry-Funktion (switch (action) ...)
+      // bleibt ABSOLUT UNVERÄNDERT, da er jetzt automatisch
+      // die korrigierte formatVal-Funktion nutzt.
+      
+      // ... (switch case 'UPDATE':) ...
       switch (action) {
         case 'UPDATE':
           changesHtml = Object.keys(d).map(key => {
             const change = d[key]; 
             if (typeof change !== 'object' || change === null) return '';
-            const oldVal = formatVal(change.old);
-            const newVal = formatVal(change.new);
             
-            // *** HIER IST DIE ÄNDERUNG ***
+            const oldVal = formatVal(change.old, key); // Nutzt jetzt Datumsformatierung
+            const newVal = formatVal(change.new, key); // Nutzt jetzt Datumsformatierung
+            
             const germanKey = translateDetailKey(key);
 
             return `
@@ -226,14 +270,11 @@ function renderLogEntry(log) {
             `;
           }).join('');
           break;
-
+      // ... (case 'CREATE':) ...
         case 'CREATE':
           changesHtml = Object.keys(d).map(key => {
-            const newVal = formatVal(d[key]);
-            
-            // *** HIER IST DIE ÄNDERUNG ***
+            const newVal = formatVal(d[key], key); // Nutzt jetzt Datumsformatierung
             const germanKey = translateDetailKey(key);
-
             return `
               <div ${rowStyle}>
                 <strong class="text-body-secondary">${germanKey}:</strong>
@@ -242,14 +283,11 @@ function renderLogEntry(log) {
             `;
           }).join('');
           break;
-
+      // ... (case 'DELETE':) ...
         case 'DELETE':
           changesHtml = Object.keys(d).map(key => {
-            const oldVal = formatVal(d[key]);
-            
-            // *** HIER IST DIE ÄNDERUNG ***
+            const oldVal = formatVal(d[key], key); // Nutzt jetzt Datumsformatierung
             const germanKey = translateDetailKey(key);
-            
             return `
               <div ${rowStyle}>
                 <strong class="text-body-secondary">${germanKey}:</strong>
@@ -258,17 +296,14 @@ function renderLogEntry(log) {
             `;
           }).join('');
           break;
-
+      // ... (case 'BULK_UPDATE' / default:) ...
         case 'BULK_UPDATE':
         case 'IMPORT':
         default:
           if (typeof d === 'object' && d !== null && !Array.isArray(d)) {
             changesHtml = Object.keys(d).map(key => {
-              const val = formatVal(d[key]);
-              
-              // *** HIER IST DIE ÄNDERUNG ***
+              const val = formatVal(d[key], key); // Nutzt jetzt Datumsformatierung
               const germanKey = translateDetailKey(key);
-              
               return `
                 <div ${rowStyle}>
                   <strong class="text-body-secondary">${germanKey}:</strong>
@@ -306,6 +341,7 @@ function renderLogEntry(log) {
 }
 
 function getActionBadge(action) {
+  // ... (unverändert) ...
   const type = String(action).toUpperCase();
   let color = 'secondary';
   if (type === 'CREATE') color = 'success';
@@ -315,9 +351,8 @@ function getActionBadge(action) {
   return `<span class="badge text-bg-${color}">${escapeHtml(type)}</span>`;
 }
 
-// (Die escapeHtml-Funktion aus devices.js hierher kopieren,
-//  oder sicherstellen, dass sie global geladen wird)
 function escapeHtml(s) {
+  // ... (unverändert) ...
   return String(s ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
