@@ -6,6 +6,10 @@
  * (apiFetch, openEditModal, helpers, etc.).
  */
 
+// --- NEUE KONSTANTEN für Datums-Speicher ---
+const RECENT_MOVE_DATES_KEY = 'walkthrough_recentMoveDates';
+const MAX_RECENT_DATES = 5; // Speichert die letzten 5 Daten
+
 document.addEventListener("DOMContentLoaded", () => {
   // --- NEUER Globaler Status ---
   let allRoomsCache = []; // Speichert alle Räume von der API
@@ -986,22 +990,49 @@ function updateSortIndicators() {
     // Leer lassen, um die Konsole nicht vollzuspammen.
   }
 
-  /**
-   * Stoppt den Scanner und gibt die Kamera frei.
-   * Wird durch das 'hidden.bs.modal' Event aufgerufen.
+  
+
+/**
+   * Speichert ein Datum in der "Zuletzt verwendet"-Liste im localStorage.
+   * @param {string} isoDate - Das Datum im Format YYYY-MM-DD
    */
-  function stopScanner() {
-    if (html5QrcodeScanner) {
-      try {
-        html5QrcodeScanner.clear().catch((err) => {
-          console.error("Fehler beim Stoppen des Scanners:", err);
-        });
-        html5QrcodeScanner = null; // Objekt zerstören
-      } catch (err) {
-        console.error("Fehler beim Stoppen des Scanners:", err);
-      }
+  function saveRecentMoveDate(isoDate) {
+    if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return;
+
+    try {
+      let recentDates = getRecentMoveDates(); // Holt die bestehende Liste
+      // Entferne das Datum, falls es schon existiert (um es nach vorne zu rücken)
+      recentDates = recentDates.filter(d => d !== isoDate);
+      // Füge das neue Datum am Anfang hinzu
+      recentDates.unshift(isoDate);
+      // Begrenze auf die maximale Anzahl
+      const finalDates = recentDates.slice(0, MAX_RECENT_DATES);
+      
+      localStorage.setItem(RECENT_MOVE_DATES_KEY, JSON.stringify(finalDates));
+    } catch (e) {
+      console.warn("Konnte 'Zuletzt verwendete Daten' nicht speichern:", e);
     }
   }
+
+  /**
+   * Holt die Liste der "Zuletzt verwendeten Daten" aus dem localStorage.
+   * @returns {string[]} Ein Array von Datums-Strings.
+   */
+  function getRecentMoveDates() {
+    try {
+      const rawData = localStorage.getItem(RECENT_MOVE_DATES_KEY);
+      if (rawData) {
+        const dates = JSON.parse(rawData);
+        if (Array.isArray(dates)) {
+          return dates;
+        }
+      }
+    } catch (e) {
+       console.warn("Konnte 'Zuletzt verwendete Daten' nicht laden:", e);
+    }
+    return []; // Leeres Array als Fallback
+  }
+
 
  /**
    *  Lädt die Raum-Historie für das Verschiebe-Modal.
@@ -1035,8 +1066,9 @@ function updateSortIndicators() {
     }
   }
 
-  /**
-   *  Ersetzt die alte Funktion. Öffnet das Modal zum Verschieben.
+/**
+   * Ersetzt die alte Funktion. Öffnet das Modal zum Verschieben.
+   * (ANGEPASST, um gespeicherte Daten zu laden)
    */
   window.moveDeviceToCurrentRoom = async function (
     deviceId,
@@ -1046,12 +1078,19 @@ function updateSortIndicators() {
   ) {
     if (!deviceId || !newRoomId || !moveDeviceModalInstance) return;
 
+    // --- DATUMS-LOGIK START ---
     const today = new Date().toISOString().slice(0, 10);
+    const recentDates = getRecentMoveDates();
+    
+    // Nimm das letzte verwendete Datum (an Position 0) oder 'heute'
+    const dateToSet = (recentDates.length > 0 && recentDates[0]) ? recentDates[0] : today;
+    // --- DATUMS-LOGIK ENDE ---
+
 
     // 1. Modal-Inhalte füllen
     setValue("move-device-id", deviceId);
     setValue("move-target-room-id", newRoomId);
-    setValue("move-date", today);
+    setValue("move-date", dateToSet); // (Hier wird das gespeicherte Datum gesetzt)
 
     document.getElementById("move-device-info").textContent =
       deviceIdentifier || `Gerät ID: ${deviceId}`;
@@ -1062,6 +1101,16 @@ function updateSortIndicators() {
     const radioNew = document.getElementById("move-action-new");
     if (radioNew) radioNew.checked = true;
 
+    // --- NEU: Datalist füllen ---
+    const datalist = document.getElementById('recent-move-dates');
+    if (datalist) {
+      // Nimm alle Daten (einschließlich des ersten, das bereits im Feld steht)
+      datalist.innerHTML = recentDates
+        .map(d => `<option value="${escapeAttr(d)}"></option>`)
+        .join('');
+    }
+    // --- ENDE NEU ---
+
     // 2. Historie laden
     await loadMoveHistory(deviceId);
 
@@ -1070,7 +1119,8 @@ function updateSortIndicators() {
   };
 
   /**
-   *  Verarbeitet das Absenden des Verschiebe-Formulars.
+   * Verarbeitet das Absenden des Verschiebe-Formulars.
+   * (ANGEPASST, um das Datum zu speichern)
    */
   async function handleMoveDeviceSubmit(event) {
     event.preventDefault();
@@ -1100,6 +1150,11 @@ function updateSortIndicators() {
             move_date: moveDate,
           }),
         });
+        
+        // --- NEU: Datum bei Erfolg speichern ---
+        saveRecentMoveDate(moveDate);
+        // --- ENDE NEU ---
+
       } else if (action === "correct") {
         // --- AKTION B: Letzten Eintrag korrigieren ---
         await apiFetch(`/api/devices/${deviceId}/correct-current-room`, {
@@ -1120,7 +1175,6 @@ function updateSortIndicators() {
       alert(`Fehler beim Verschieben des Geräts: ${err.message}`);
     }
   }
-
 
   /**
    *  Entfernt ein Gerät aus dem aktuellen Raum, indem der
