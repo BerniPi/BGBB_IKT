@@ -55,11 +55,18 @@ font-size: 0.8em; }
  * - Desktop LG (992px - 1199px): Text ausblenden (nur Icon).
  * - Mobile (< 992px): Bootstrap's navbar-collapse greift (Hamburger-Menü).
  */
-@media (min-width: 992px) and (max-width: 1199.98px) {
+@media (min-width: 500px) and (max-width: 1199.98px) {
   .navbar-nav .nav-link .nav-link-text {
     display: none; /* Text ausblenden */
   }
   
+  .col-details {
+    max-width: 350px;       /* Maximale Breite */
+    word-wrap: break-word;  /* Lange Wörter umbrechen */
+    white-space: normal;    /* Normaler Textumbruch */
+    font-size: 0.9rem;      /* Etwas kleiner */
+}
+
   /* Icons zentrieren/anpassen, wenn Text weg ist */
   .navbar-nav .nav-link {
     text-align: center;

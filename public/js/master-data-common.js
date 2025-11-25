@@ -74,12 +74,13 @@ window.saveInlineChange = async function(inputElement) {
     if (dataType === 'date') {
         valueToSend = formatDateToYYYYMMDD(newValue);
         if (newValue.trim() !== '' && valueToSend === null) {
-             alert(`Ungültiges Datum: ${newValue}. Bitte tt.mm.jjjj verwenden.`);
-             inputElement.value = originalValue; // Zurücksetzen
-             inputElement.classList.add('d-none');
-             textSpan.classList.remove('d-none');
-             return;
-        }
+     alert(`Ungültiges Datum: ${newValue}. Bitte tt.mm.jjjj verwenden.`);
+     // NICHT schließen, sondern Fokus behalten
+     // inputElement.classList.add('d-none'); <-- LÖSCHEN
+     // textSpan.classList.remove('d-none'); <-- LÖSCHEN
+     inputElement.focus(); // Fokus zurückgeben
+     return;
+}
         displayValue = formatDateToDDMMYYYY(valueToSend) || '-';
     } else if (dataType === 'price') {
         valueToSend = eurosToCents(newValue);

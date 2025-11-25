@@ -1,36 +1,49 @@
 <%- include('partials/header') %>
 <%- include('partials/navbar', { page }) %>
 
+<style>
+  .col-details {
+      max-width: 350px;
+      word-wrap: break-word;
+      white-space: normal;
+      font-size: 0.9rem;
+  }
+</style>
+
 <div class="container-fluid mt-4">
   <div class="card shadow-sm">
     <div class="card-header">
       <h5 class="mb-0"><i class="bi bi-card-list me-2"></i>Aktivitätsprotokoll</h5>
     </div>
     <div class="card-body">
-      <p class="text-muted">Zeigt die letzten 100 Aktionen im System.</p>
+      <p class="text-muted">Zeigt die letzten <span id="log-count">100</span> Aktionen im System.</p>
+      
       <div class="table-responsive">
         <table class="table table-sm table-hover">
           <thead>
             <tr>
-          
-    <th>Zeitstempel</th>
+              <th>Zeitstempel</th>
               <th>Benutzer</th>
               <th>Aktion</th>
-              
               <th>Objekt (Gerät)</th>
               <th>Aktueller Raum</th>
-              <th>Details</th>
+              <th class="col-details">Details</th>
             </tr>
           </thead>
           <tbody id="log-table-body">
-       
-     </tbody>
+             </tbody>
         </table>
+        
+        <div class="text-center mt-3 mb-4">
+          <button id="btn-load-more" class="btn btn-outline-primary">
+            <i class="bi bi-arrow-clockwise me-1"></i> Weitere Einträge laden
+          </button>
+        </div>
+
       </div>
     </div>
   </div>
 </div>
 
 <%- include('partials/footer') %>
-<script src="/js/activities.js"></script> ```
-}
+<script src="/js/activities.js"></script>

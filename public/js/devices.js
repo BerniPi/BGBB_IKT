@@ -273,7 +273,6 @@ if (typeof apiFetch === "undefined") {
       // No Content -> return null or {} ?
       return null;
     }
-// devices.js (NEUER CODE)
 
     const responseContentType = response.headers.get("content-type") || "";
     const contentLength = response.headers.get("content-length");

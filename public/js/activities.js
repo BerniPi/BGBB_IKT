@@ -1,8 +1,7 @@
 // public/js/activities.js
 
-// NEU: Übersetzungs-Map für Detail-Felder
+// Übersetzungs-Map für Detail-Felder
 const detailKeyTranslations = {
-// ... (deine ganzen Übersetzungen bleiben unverändert) ...
   model_id: "Modell",
   hostname: "Hostname",
   serial_number: "Seriennummer",
@@ -38,125 +37,140 @@ const detailKeyTranslations = {
   from_date: "Ab-Datum",
   to_date: "Bis-Datum",
   deleted_entry: "Gelöschter Eintrag",
-  delete_room_history: "Raum-Eintrag löschen"
+  delete_room_history: "Raum-Eintrag löschen",
+  move_date: "Verschiebe-Datum",
+  new_room_id: "Neuer Raum"
 };
 
-/**
- * NEU: Helfer-Funktion zum Übersetzen
- * (unverändert)
- */
 function translateDetailKey(key) {
   return detailKeyTranslations[key] || escapeHtml(key);
 }
 
-// === NEU: Regex-Helfer für Datumsformatierung ===
-// Erkennt YYYY-MM-DD
+// Regex-Helfer
 const isoDateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
-// Erkennt YYYY-MM-DDTHH:mm... (voller Zeitstempel)
-const isoTimestampRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
-// ==================================================
+
+// Globaler Zähler
+let currentLimit = 100;
 
 document.addEventListener("DOMContentLoaded", async () => {
-  // ... (dein ganzer DOMContentLoaded-Code bleibt unverändert) ...
- 
   if (typeof apiFetch === "undefined") {
-    console.error("apiFetch ist nicht definiert. Stelle sicher, dass main.js oder devices.js geladen wird.");
+    console.error("apiFetch ist nicht definiert.");
     return;
   }
 
   const tbody = document.getElementById("log-table-body");
-  tbody.innerHTML = '<tr><td colspan="6" class="text-center">Lade Protokoll...</td></tr>';
   
-  try {
-    const response = await apiFetch("/api/activity/log?limit=100");
-    
-    if (!response || !response.logs) {
-      throw new Error("Ungültige Antwort vom Server erhalten.");
-    }
-    
-    const logs = response.logs;
-    const rooms = response.rooms || [];
-
-    const roomLookup = new Map();
-    for (const room of rooms) {
-      const rName = room.room_name || '';
-      const rNum = room.room_number || '';
-      const roomLabel = rNum ? `${rNum} (${rName})` : (rName || String(room.room_id));
-      roomLookup.set(String(room.room_id), escapeHtml(roomLabel.trim().replace(" ()", "")));
-    }
-
-
-    if (!logs.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Keine Einträge gefunden.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = logs.map(log => renderLogEntry(log, roomLookup)).join("");
-
-  } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Fehler: ${err.message}</td></tr>`;
-  }
-
+  // Click-Listener für Zeilen
   tbody.addEventListener("click", (e) => {
     const row = e.target.closest("tr.clickable-log-row");
     if (!row) return; 
-
     const type = row.dataset.entityType;
     const id = row.dataset.entityId;
-
-    if (type === "device" && id) {
-      window.location.href = `/devices?edit_id=${id}`;
-    } else if (type === "task" && id) {
-      window.location.href = `/tasks?edit_id=${id}`;
-    }
+    if (type === "device" && id) window.location.href = `/devices?edit_id=${id}`;
+    else if (type === "task" && id) window.location.href = `/tasks?edit_id=${id}`;
   });
+
+  // Click-Listener für "Mehr laden"
+  const btnMore = document.getElementById("btn-load-more");
+  if(btnMore) {
+    btnMore.addEventListener("click", async () => {
+        const icon = btnMore.querySelector("i");
+        icon.classList.add("bi-arrow-clockwise", "fa-spin"); 
+        btnMore.disabled = true;
+        
+        currentLimit += 100;
+        await loadLogs(currentLimit);
+        
+        btnMore.disabled = false;
+        icon.classList.remove("fa-spin");
+    });
+  }
+  
+  // Initiales Laden
+  await loadLogs(100);
 });
+
+async function loadLogs(limit) {
+    const tbody = document.getElementById("log-table-body");
+    
+    // ÄNDERUNG: Tabelle nur beim ersten Aufruf (Start) leeren.
+    // Beim "Nachladen" bleiben die alten Zeilen sichtbar, bis die neuen da sind.
+    // Das verhindert das Springen des Scrollbalkens.
+    if (limit === 100) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Lade Daten...</td></tr>';
+    }
+    
+    try {
+        const response = await apiFetch(`/api/activity/log?limit=${limit}`);
+        
+        if (!response || !response.logs) throw new Error("Ungültige Antwort.");
+        
+        // Zähler aktualisieren
+        const countSpan = document.getElementById("log-count");
+        if (countSpan) {
+            countSpan.textContent = limit; // Zeigt an, wie viele geladen wurden (z.B. 200)
+        }
+        
+        const logs = response.logs;
+        const rooms = response.rooms || [];
+        const roomLookup = new Map();
+        
+        // Raum-Lookup Map bauen
+        for (const room of rooms) {
+          const rName = room.room_name || '';
+          const rNum = room.room_number || '';
+          const roomLabel = rNum ? `${rNum} (${rName})` : (rName || String(room.room_id));
+          roomLookup.set(String(room.room_id), escapeHtml(roomLabel.trim().replace(" ()", "")));
+        }
+
+        if (!logs.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Keine Einträge gefunden.</td></tr>';
+          return;
+        }
+
+        // Inhalt austauschen (Browser behält Scroll-Position bei, da die Tabelle nur länger wird)
+        tbody.innerHTML = logs.map(log => renderLogEntry(log, roomLookup)).join("");
+
+    } catch(err) {
+        // Bei Fehler: Nur leeren, wenn es der erste Aufruf war.
+        // Sonst Alert zeigen, damit die bisherigen Daten nicht verschwinden.
+        if (limit === 100) {
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Fehler: ${err.message}</td></tr>`;
+        } else {
+            alert(`Fehler beim Laden weiterer Daten: ${err.message}`);
+        }
+    }
+}
 
 
 function renderLogEntry(log, roomLookup = new Map()) {
-  // ... (Zeitstempel, Benutzer, Aktion, Entity, Raum... bleibt alles unverändert) ...
   const ts = new Date(log.timestamp).toLocaleString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
   });
   const user = escapeHtml(log.username || 'Unbekannt');
   const actionBadge = getActionBadge(log.action_type);
   const isDeleteAction = log.action_type.toUpperCase() === 'DELETE';
-  let detailsData = null; 
   
+  let detailsData = null; 
   if (log.details_json) {
-    try {
-      detailsData = JSON.parse(log.details_json);
-    } catch (e) {
-      console.error("Fehler beim Parsen der Log-Details:", e, log.details_json);
-    }
+    try { detailsData = JSON.parse(log.details_json); } catch (e) {}
   }
 
   let entity = 'System';
   let room = '<span class="text-muted">—</span>';
 
+  // Entity & Room Logik
   if (log.entity_type === 'device') {
     if (isDeleteAction && detailsData) {
       const model = escapeHtml(detailsData.model_name || 'Gelöschtes Modell');
-      const identifier = escapeHtml(
-        detailsData.serial_number || 
-        detailsData.hostname || 
-        detailsData.inventory_number || 
-        `ID ${log.entity_id}`
-      );
+      const identifier = escapeHtml(detailsData.serial_number || detailsData.hostname || detailsData.inventory_number || `ID ${log.entity_id}`);
       entity = `${model}<br><small class="text-muted">${identifier}</small>`;
-      if (detailsData.last_room) {
-        room = escapeHtml(detailsData.last_room);
-      }
-    } 
-    else if (!isDeleteAction) { 
+      if (detailsData.last_room) room = escapeHtml(detailsData.last_room);
+    } else { 
       const model = escapeHtml(log.model_name || 'Unbek. Modell');
       const serial = escapeHtml(log.serial_number || `ID ${log.entity_id}`);
       entity = `${model}<br><small class="text-muted">${serial}</small>`;
-      
       if (log.device_room_name || log.device_room_number) {
         const rName = escapeHtml(log.device_room_name || '');
         const rNum = escapeHtml(log.device_room_number || '');
@@ -172,162 +186,64 @@ function renderLogEntry(log, roomLookup = new Map()) {
     }
   } else if (log.entity_type) {
     entity = escapeHtml(log.entity_type);
-    if (log.entity_id) {
-      entity += ` <span class="text-muted">#${log.entity_id}</span>`;
-    }
+    if (log.entity_id) entity += ` <span class="text-muted">#${log.entity_id}</span>`;
   }
 
   let rowProps = "";
-  if (log.entity_type === "device" && log.entity_id && !isDeleteAction) {
-    rowProps = ` data-entity-type="device" data-entity-id="${log.entity_id}" class="clickable-log-row" title="Gerät ID ${log.entity_id} bearbeiten"`;
-  } else if (log.entity_type === "task" && log.entity_id && !isDeleteAction) {
-    rowProps = ` data-entity-type="task" data-entity-id="${log.entity_id}" class="clickable-log-row" title="Task ID ${log.entity_id} bearbeiten"`;
+  if (!isDeleteAction && log.entity_id) {
+     if (log.entity_type === "device") rowProps = ` data-entity-type="device" data-entity-id="${log.entity_id}" class="clickable-log-row"`;
+     else if (log.entity_type === "task") rowProps = ` data-entity-type="task" data-entity-id="${log.entity_id}" class="clickable-log-row"`;
   }
 
-
-  // 5. Details-Spalte (HIER IST DIE ÄNDERUNG)
+  // Details-Rendering
   let details = '<span class="text-muted">—</span>';
   if (detailsData) {
-    try {
-      const d = detailsData;
-      const action = log.action_type.toUpperCase();
-
-      // === MODIFIZIERT: formatVal kann jetzt DATUMSANGABEN formatieren ===
       const formatVal = (val, key) => {
-        // 1. Raum-ID-Übersetzung (wie bisher)
-        if (key === 'room_id' && (val !== null && val !== undefined && val !== "")) {
-          const roomName = roomLookup.get(String(val));
-          if (roomName) {
-            return roomName; // Gibt "101 (Lager)" zurück (ist bereits escaped)
-          }
-          return escapeHtml(`[Gelöschter Raum: ID ${val}]`);
+        if (key === 'room_id' || key === 'new_room_id') {
+           const r = roomLookup.get(String(val));
+           return r ? r : escapeHtml(val);
         }
-
-        // 2. Leere Werte (wie bisher)
-        if (val === null || val === undefined || val === "") {
-          return '<span class="text-muted fst-italic">[leer]</span>';
-        }
-
-        // 3. === NEU: Datumsformatierung ===
-        if (typeof val === 'string') {
-          // Fall A: Reiner Datumsstring (YYYY-MM-DD)
-          if (isoDateOnlyRegex.test(val)) {
-            // Einfache String-Umkehrung, vermeidet Zeitzonenprobleme
+        if (val == null || val === "") return '<span class="text-muted fst-italic">[leer]</span>';
+        if (typeof val === 'string' && isoDateOnlyRegex.test(val)) {
             const [y, m, d] = val.split('-');
-            return `${d}.${m}.${y}`; 
-          }
-          
-          // Fall B: Voller Zeitstempel (z.B. created_at, updated_at)
-          if (isoTimestampRegex.test(val)) {
-            try {
-               // formatiert als "15.11.2025, 10:30"
-               return new Date(val).toLocaleString('de-DE', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-               });
-            } catch (e) { /* fallback zum Standard-String */ }
-          }
+            return `${d}.${m}.${y}`;
         }
-        // === ENDE NEU ===
-
-        // 4. Bisherige Logik für alle anderen Strings
-        let s = String(val);
-        if (s.length > 50 && s.includes(' ')) {
-           s = s.substring(0, 50) + '...';
-        }
-        return escapeHtml(s);
+        return escapeHtml(String(val));
       };
-      
+
       const rowStyle = 'style="font-size: 0.9em; line-height: 1.3;"';
-      let changesHtml = '';
+      let html = '';
+      const act = log.action_type.toUpperCase();
 
-      // Der Rest der renderLogEntry-Funktion (switch (action) ...)
-      // bleibt ABSOLUT UNVERÄNDERT, da er jetzt automatisch
-      // die korrigierte formatVal-Funktion nutzt.
-      
-      // ... (switch case 'UPDATE':) ...
-      switch (action) {
-        case 'UPDATE':
-          changesHtml = Object.keys(d).map(key => {
-            const change = d[key]; 
-            if (typeof change !== 'object' || change === null) return '';
-            
-            const oldVal = formatVal(change.old, key); // Nutzt jetzt Datumsformatierung
-            const newVal = formatVal(change.new, key); // Nutzt jetzt Datumsformatierung
-            
-            const germanKey = translateDetailKey(key);
-
-            return `
-              <div class="mb-1" ${rowStyle}>
-                <strong class="text-body-secondary">${germanKey}:</strong><br>
-                <span class="text-danger" style="text-decoration: line-through;">${oldVal}</span>
-                <i class="bi bi-arrow-right-short mx-1"></i>
-                <span class="text-success fw-medium">${newVal}</span>
-              </div>
-            `;
+      if (act === 'UPDATE') {
+          html = Object.keys(detailsData).map(k => {
+              const chg = detailsData[k];
+              if(!chg || typeof chg !== 'object') return '';
+              return `<div class="mb-1" ${rowStyle}>
+                 <strong class="text-body-secondary">${translateDetailKey(k)}:</strong><br>
+                 <span class="text-danger" style="text-decoration: line-through;">${formatVal(chg.old, k)}</span>
+                 <i class="bi bi-arrow-right-short mx-1"></i>
+                 <span class="text-success fw-medium">${formatVal(chg.new, k)}</span>
+              </div>`;
           }).join('');
-          break;
-      // ... (case 'CREATE':) ...
-        case 'CREATE':
-          changesHtml = Object.keys(d).map(key => {
-            const newVal = formatVal(d[key], key); // Nutzt jetzt Datumsformatierung
-            const germanKey = translateDetailKey(key);
-            return `
+      } else if (act === 'CREATE' || act === 'DELETE') {
+          const color = act === 'CREATE' ? 'text-success' : 'text-danger';
+          const decor = act === 'DELETE' ? 'style="text-decoration: line-through;"' : '';
+          html = Object.keys(detailsData).map(k => `
               <div ${rowStyle}>
-                <strong class="text-body-secondary">${germanKey}:</strong>
-                <span class="text-success ms-1">${newVal}</span>
-              </div>
-            `;
-          }).join('');
-          break;
-      // ... (case 'DELETE':) ...
-        case 'DELETE':
-          changesHtml = Object.keys(d).map(key => {
-            const oldVal = formatVal(d[key], key); // Nutzt jetzt Datumsformatierung
-            const germanKey = translateDetailKey(key);
-            return `
+                 <strong class="text-body-secondary">${translateDetailKey(k)}:</strong>
+                 <span class="${color} ms-1" ${decor}>${formatVal(detailsData[k], k)}</span>
+              </div>`).join('');
+      } else {
+           html = Object.keys(detailsData).map(k => `
               <div ${rowStyle}>
-                <strong class="text-body-secondary">${germanKey}:</strong>
-                <span class="text-danger ms-1" style="text-decoration: line-through;">${oldVal}</span>
-              </div>
-            `;
-          }).join('');
-          break;
-      // ... (case 'BULK_UPDATE' / default:) ...
-        case 'BULK_UPDATE':
-        case 'IMPORT':
-        default:
-          if (typeof d === 'object' && d !== null && !Array.isArray(d)) {
-            changesHtml = Object.keys(d).map(key => {
-              const val = formatVal(d[key], key); // Nutzt jetzt Datumsformatierung
-              const germanKey = translateDetailKey(key);
-              return `
-                <div ${rowStyle}>
-                  <strong class="text-body-secondary">${germanKey}:</strong>
-                  <span class="text-body ms-1">${val}</span>
-                </div>
-              `;
-            }).join('');
-          } else {
-            details = `<pre class="mb-0" style="font-size: 0.8em;">${escapeHtml(JSON.stringify(d, null, 2))}</pre>`;
-          }
-          break;
+                 <strong class="text-body-secondary">${translateDetailKey(k)}:</strong>
+                 <span class="text-body ms-1">${formatVal(detailsData[k], k)}</span>
+              </div>`).join('');
       }
-      
-      if (changesHtml) {
-          details = changesHtml || '<span class="text-muted">(Keine Details)</span>';
-      }
-
-    } catch (e) {
-      console.error("Fehler beim Rendern der Log-Details:", e);
-      details = '<span class="text-danger">Log-Details ungültig</span>';
-    }
+      if(html) details = html;
   }
 
-  // 6. Das <tr>-Rendering (unverändert)
   return `
     <tr ${rowProps}>
       <td class="text-nowrap">${ts}</td>
@@ -335,13 +251,12 @@ function renderLogEntry(log, roomLookup = new Map()) {
       <td class="text-nowrap">${actionBadge}</td>
       <td>${entity}</td>
       <td>${room}</td>
-      <td>${details}</td>
+      <td class="col-details">${details}</td>
     </tr>
   `;
 }
 
 function getActionBadge(action) {
-  // ... (unverändert) ...
   const type = String(action).toUpperCase();
   let color = 'secondary';
   if (type === 'CREATE') color = 'success';
@@ -352,11 +267,5 @@ function getActionBadge(action) {
 }
 
 function escapeHtml(s) {
-  // ... (unverändert) ...
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+  return String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[m]);
 }

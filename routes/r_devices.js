@@ -317,10 +317,7 @@ router.post("/", (req, res) => {
  * PUT /api/devices/:id
  * Ein bestehendes Gerät aktualisieren.
  */
-/**
- * PUT /api/devices/:id
- * Ein bestehendes Gerät aktualisieren.
- */
+
 router.put("/:id", (req, res) => {
   const deviceId = req.params.id;
   let data = req.body || {};

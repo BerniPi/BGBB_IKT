@@ -380,10 +380,7 @@ async function loadDevicesForTaskModal(roomId) {
     '<span class="text-muted">Lade Geräte für diesen Raum...</span>';
 
   try {
-    // HINWEIS: Dies setzt voraus, dass Ihre /api/devices-Route
-    // einen Query-Parameter `?roomId=...` unterstützt.
-    // Ggf. müssen Sie auch `?status=in_operation` o.ä. hinzufügen.
-    const devices = await apiFetch(`/api/devices?roomId=${roomId}`);
+    const devices = await apiFetch(`/api/devices?room_id=${roomId}`);
 
     if (devices.length === 0) {
       container.innerHTML =
@@ -391,21 +388,33 @@ async function loadDevicesForTaskModal(roomId) {
       return;
     }
 
-    // Checkboxen für jedes Gerät erstellen
+    // 1. SORTIERUNG: Alphabetisch nach Hostname (oder Modell, falls kein Hostname)
+    devices.sort((a, b) => {
+      const nameA = (a.hostname || a.model_name || "").toLowerCase();
+      const nameB = (b.hostname || b.model_name || "").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    // 2. ANZEIGE: Modellname und Hostname bevorzugen
     container.innerHTML = devices
       .map((d) => {
-        const label = escapeHtml(
-          d.inventory_number ||
-            d.serial_number ||
-            d.hostname ||
-            `ID ${d.device_id}`,
-        );
-        const model = escapeHtml(d.model_number || "N/A");
+        // Priorität: Hostname -> Inventarnummer -> Seriennummer -> ID
+        const deviceIdentifier = d.hostname 
+            ? d.hostname 
+            : (d.inventory_number || d.serial_number || `ID ${d.device_id}`);
+
+        // Sicherstellen, dass wir den Modellnamen nehmen (falls API ihn liefert), sonst Fallback
+        const modelName = d.model_name || d.model_number || "Modell unbekannt";
+
+        // Escaping für Sicherheit
+        const safeIdentifier = escapeHtml(deviceIdentifier);
+        const safeModel = escapeHtml(modelName);
+
         return `
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" name="task-device" value="${d.device_id}" id="task-dev-${d.device_id}">
                     <label class="form-check-label" for="task-dev-${d.device_id}">
-                        ${label} (${model})
+                        <strong>${safeIdentifier}</strong> <span class="text-muted">(${safeModel})</span>
                     </label>
                 </div>
             `;
@@ -417,7 +426,6 @@ async function loadDevicesForTaskModal(roomId) {
       '<span class="text-danger">Fehler beim Laden der Gerätedaten.</span>';
   }
 }
-
 /**
  * Verarbeitet das Absenden des "Aufgabe abschließen"-Modals.
  * @param {Event} event - Das Submit-Event des Formulars.
