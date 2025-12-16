@@ -221,33 +221,33 @@ async function loadTasks() {
         }
 
         return `
-                            <tr>
-                                <td>${task.date}</td>
-                                <td>${taskStatusBadges[task.status] || task.status}</td>
-                                <td>${taskPriorityBadges[task.priority] || task.priority}</td>
-                                <td>${escapeHtml(task.category)}</td>
-                                <td>${escapeHtml(task.task)}<br><small class="text-muted">${escapeHtml(task.notes)}</small></td>
-                                <td>${roomDisplay}</td>
-                                <td>${escapeHtml(task.assigned_to) || "-"}</td>
-                                <td class="text-nowrap">
-                                    ${
-                                      task.status !== "done" &&
-                                      task.status !== "canceled"
-                                        ? `<button class="btn btn-sm btn-outline-success me-1"
-                                                title="Aufgabe abschließen..."
-                                                data-task-id="${task.task_id}"
-                                                data-task-room-id="${task.room_id || ""}"
-                                                data-task-title="${taskTitleEscaped}"
-                                                data-task-notes="${escapeHtml(task.notes)}"
-                                                onclick="openCompleteTaskModal(this)">
-                                            <i class="bi bi-check-lg"></i>
-                                         </button>`
-                                        : ""
-                                    }
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="editTask(${task.task_id})"><i class="bi bi-pencil"></i></button>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTask(${task.task_id})"><i class="bi bi-trash"></i></button>
-                                </td>
-                            </tr>
+                            <tr onclick="editTask(${task.task_id})" style="cursor: pointer;" title="Klicken zum Bearbeiten">
+                <td>${task.date}</td>
+                <td>${taskStatusBadges[task.status] || task.status}</td>
+                <td>${taskPriorityBadges[task.priority] || task.priority}</td>
+                <td>${escapeHtml(task.category)}</td>
+                <td>${escapeHtml(task.task)}<br><small class="text-muted">${escapeHtml(task.notes)}</small></td>
+                <td>${roomDisplay}</td>
+                <td>${escapeHtml(task.assigned_to) || "-"}</td>
+                <td class="text-nowrap" onclick="event.stopPropagation()"> 
+                    ${
+                      task.status !== "done" &&
+                      task.status !== "canceled"
+                        ? `<button class="btn btn-sm btn-outline-success me-1"
+                                title="Aufgabe abschließen..."
+                                data-task-id="${task.task_id}"
+                                data-task-room-id="${task.room_id || ""}"
+                                data-task-title="${taskTitleEscaped}"
+                                data-task-notes="${escapeHtml(task.notes)}"
+                                onclick="openCompleteTaskModal(this)">
+                            <i class="bi bi-check-lg"></i>
+                         </button>`
+                        : ""
+                    }
+                    <button class="btn btn-sm btn-outline-secondary" onclick="editTask(${task.task_id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTask(${task.task_id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
                         `;
       })
       .join("");
@@ -380,7 +380,13 @@ async function loadDevicesForTaskModal(roomId) {
     '<span class="text-muted">Lade Geräte für diesen Raum...</span>';
 
   try {
-    const devices = await apiFetch(`/api/devices?room_id=${roomId}`);
+    let devices = await apiFetch(`/api/devices?room_id=${roomId}`);
+
+    // ÄNDERUNG: Zusätzlicher Sicherheits-Filter im Frontend
+    // Falls die API aus irgendeinem Grund alle Geräte liefert, filtern wir hier nach.
+    if (devices && Array.isArray(devices)) {
+        devices = devices.filter(d => d.room_id == roomId);
+    }
 
     if (devices.length === 0) {
       container.innerHTML =
@@ -388,36 +394,29 @@ async function loadDevicesForTaskModal(roomId) {
       return;
     }
 
-    // 1. SORTIERUNG: Alphabetisch nach Hostname (oder Modell, falls kein Hostname)
+    // Sortierung: Alphabetisch nach Hostname/Modell
     devices.sort((a, b) => {
       const nameA = (a.hostname || a.model_name || "").toLowerCase();
       const nameB = (b.hostname || b.model_name || "").toLowerCase();
       return nameA.localeCompare(nameB);
     });
 
-    // 2. ANZEIGE: Modellname und Hostname bevorzugen
+    // Anzeige
     container.innerHTML = devices
       .map((d) => {
-        // Priorität: Hostname -> Inventarnummer -> Seriennummer -> ID
         const deviceIdentifier = d.hostname 
             ? d.hostname 
             : (d.inventory_number || d.serial_number || `ID ${d.device_id}`);
-
-        // Sicherstellen, dass wir den Modellnamen nehmen (falls API ihn liefert), sonst Fallback
         const modelName = d.model_name || d.model_number || "Modell unbekannt";
 
-        // Escaping für Sicherheit
-        const safeIdentifier = escapeHtml(deviceIdentifier);
-        const safeModel = escapeHtml(modelName);
-
         return `
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="task-device" value="${d.device_id}" id="task-dev-${d.device_id}">
-                    <label class="form-check-label" for="task-dev-${d.device_id}">
-                        <strong>${safeIdentifier}</strong> <span class="text-muted">(${safeModel})</span>
-                    </label>
-                </div>
-            `;
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="task-device" value="${d.device_id}" id="task-dev-${d.device_id}">
+                <label class="form-check-label" for="task-dev-${d.device_id}">
+                    <strong>${escapeHtml(deviceIdentifier)}</strong> <span class="text-muted">(${escapeHtml(modelName)})</span>
+                </label>
+            </div>
+        `;
       })
       .join("");
   } catch (error) {
@@ -426,6 +425,9 @@ async function loadDevicesForTaskModal(roomId) {
       '<span class="text-danger">Fehler beim Laden der Gerätedaten.</span>';
   }
 }
+
+
+
 /**
  * Verarbeitet das Absenden des "Aufgabe abschließen"-Modals.
  * @param {Event} event - Das Submit-Event des Formulars.
