@@ -455,7 +455,8 @@ router.post('/import-simple', upload.single('file'), async (req, res) => {
       model: h('model_number'),
       host: h('hostname'),
       ip: h('ip_address'),
-      mac: h('mac_address')
+      mac: h('mac_address'),
+      inventory: h('inventory_number')
     };
 
     if (!COL.serial || !COL.model) {
@@ -477,7 +478,7 @@ router.post('/import-simple', upload.single('file'), async (req, res) => {
         const hostname = toNullIfEmpty(r[COL.host]);
         const ip_address = toNullIfEmpty(r[COL.ip]);
         const mac_address = normalizeMac(r[COL.mac]); // Helfer wiederverwenden 
-
+        const inventory_number = toNullIfEmpty(r[COL.inventory]);
         // 2. Validierung (Schlüssel-Felder)
         if (!serial_number) {
           problems.push(`Zeile ${rowNum}: Übersprungen - 'serial_number' fehlt.`);
@@ -503,17 +504,17 @@ router.post('/import-simple', upload.single('file'), async (req, res) => {
           // 5. UPDATE
           // Aktualisiert alle Werte (außer serial_number)
           await dbRun(
-            `UPDATE devices SET model_id = ?, hostname = ?, ip_address = ?, mac_address = ?
+            `UPDATE devices SET model_id = ?, hostname = ?, inventory_number = ?, ip_address = ?, mac_address = ?
              WHERE device_id = ?`,
-            [model_id, hostname, ip_address, mac_address, existingDevice.device_id]
+            [model_id, hostname, inventory_number, ip_address, mac_address, existingDevice.device_id]
           );
           updated++;
         } else {
           // 6. CREATE
           await dbRun(
-            `INSERT INTO devices (serial_number, model_id, hostname, ip_address, mac_address, status)
-             VALUES (?, ?, ?, ?, ?, 'active')`,
-            [serial_number, model_id, hostname, ip_address, mac_address]
+            `INSERT INTO devices (serial_number, model_id, hostname, inventory_number, ip_address, mac_address, status)
+             VALUES (?, ?, ?, ?, ?, ?, 'active')`,
+            [serial_number, model_id, hostname, inventory_number, ip_address, mac_address]
           );
           created++;
         }

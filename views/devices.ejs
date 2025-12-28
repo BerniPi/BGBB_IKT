@@ -9,9 +9,14 @@
 <h5 class="mb-0">
         <i class="bi bi-hdd-stack me-2"></i> Geräte
         <span id="device-count" class="badge bg-secondary ms-1">0</span>
-      </h5>      <button class="btn btn-primary" id="btnNewDevice">
+      </h5>
+      <div> <button class="btn btn-outline-secondary me-2" id="btnExport">
+        <i class="bi bi-file-earmark-arrow-down me-1"></i> Export
+    </button>
+    <button class="btn btn-primary" id="btnNewDevice">
         <i class="bi bi-plus-lg me-1"></i> Neues Gerät
-      </button>
+    </button>
+</div>
     </div>
 
     <div class="px-3 pt-3">
@@ -291,6 +296,74 @@ Ausgeschieden)</option>
     </div>
   </div>
 </div>
+<div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-file-earmark-spreadsheet me-2"></i> Liste exportieren</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <form id="exportForm">
+          
+          <div class="mb-3">
+            <label class="form-label fw-bold">Welche Geräte?</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="exportScope" id="scopeFilter" value="filter" checked>
+              <label class="form-check-label" for="scopeFilter">
+                Aktueller Filter (<span id="export-count-preview">0</span> Geräte)
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="exportScope" id="scopeAll" value="all">
+              <label class="form-check-label" for="scopeAll">
+                Alle Geräte (ungefiltert)
+              </label>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">Welche Spalten?</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="exportFields" id="fieldsVisible" value="visible" checked>
+              <label class="form-check-label" for="fieldsVisible">
+                Nur aktuell sichtbare Spalten
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="exportFields" id="fieldsAll" value="all">
+              <label class="form-check-label" for="fieldsAll">
+                Alle verfügbaren Datenfelder
+              </label>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">Format</label>
+            <div class="d-flex gap-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="exportFormat" id="formatXlsx" value="xlsx" checked>
+                    <label class="form-check-label" for="formatXlsx"><i class="bi bi-file-excel text-success"></i> Excel (.xlsx)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="exportFormat" id="formatPdf" value="pdf">
+                    <label class="form-check-label" for="formatPdf"><i class="bi bi-file-pdf text-danger"></i> PDF (.pdf)</label>
+                </div>
+            </div>
+          </div>
+
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+        <button type="button" class="btn btn-primary" id="btnDoExport">
+            <i class="bi bi-download me-1"></i> Herunterladen
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <%- include('partials/footer') %>
 <script src="/js/devices.js"></script>

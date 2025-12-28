@@ -390,6 +390,133 @@ try {
     } catch (e) {
       console.error("Fehler beim Wiederherstellen des Raum-Filters:", e);
     }
+    // --- EXPORT LOGIK START ---
+    const btnExport = document.getElementById("btnExport");
+    if (btnExport) {
+      btnExport.addEventListener("click", () => {
+        // Update Count Preview im Modal
+        const countSpan = document.getElementById("export-count-preview");
+        if (countSpan && devicesCache) {
+            countSpan.textContent = devicesCache.length;
+        }
+        showModalById("exportModal");
+      });
+    }
+
+    const btnDoExport = document.getElementById("btnDoExport");
+    if (btnDoExport) {
+      btnDoExport.addEventListener("click", () => {
+        const scope = document.querySelector('input[name="exportScope"]:checked').value;
+        const fields = document.querySelector('input[name="exportFields"]:checked').value;
+        const format = document.querySelector('input[name="exportFormat"]:checked').value;
+
+        // URL Parameter bauen
+        const params = new URLSearchParams();
+        params.append("format", format);
+
+        // 1. Filter Logik
+        if (scope === "filter") {
+            // Wir nutzen die globalen __filters Variablen aus devices.js
+            if (__filters.category_id) params.append("category_id", __filters.category_id);
+            if (__filters.model_id) params.append("model_id", __filters.model_id);
+            if (__filters.room_id) params.append("room_id", __filters.room_id);
+            if (__filters.status) params.append("status", __filters.status);
+            if (__filters.q) params.append("q", __filters.q);
+            
+            // Sortierung auch übernehmen? Optional.
+            if (__sort.col) params.append("sort", __sort.col);
+            if (__sort.dir) params.append("dir", __sort.dir);
+        }
+
+        // 2. Felder Logik
+        if (fields === "visible") {
+            // Wir sammeln die Keys der aktuell sichtbaren Header
+            const visibleCols = [];
+            // Standard-Spalten (immer da, außer wir wollen sie explizit ausschließen)
+            visibleCols.push('category_name', 'model_name', 'room_name', 'status');
+            
+            // Dynamische Spalten prüfen
+            const optionalHeaders = document.querySelectorAll('th[data-col-key]');
+            optionalHeaders.forEach(th => {
+                // Wenn die Klasse 'col-optional' drauf ist, prüfen wir ob die Tabelle die Klasse 'show-optional-cols' hat
+                // ODER ob der Header gar nicht ausgeblendet ist (je nach deiner CSS Logik)
+                
+                // Da deine Logik auf CSS Klassen basiert:
+                // Ein Header ist sichtbar, wenn er NICHT "col-optional" hat 
+                // ODER wenn er "col-optional" hat UND die Tabelle "show-optional-cols" hat.
+                
+                const isOptional = th.classList.contains('col-optional');
+                const tableShowOptional = document.getElementById('devices-card')?.classList.contains('show-optional-cols');
+                
+                if (!isOptional || (isOptional && tableShowOptional)) {
+                    visibleCols.push(th.dataset.colKey);
+                }
+            });
+            
+            // Übergabe als kommaseparierte Liste
+            params.append("columns", visibleCols.join(","));
+        }
+
+        // 3. Download anstoßen (MIT Token via fetch)
+        const downloadUrl = `/api/devices/export?${params.toString()}`;
+        
+        // Wir nutzen fetch direkt (oder apiFetch, wenn es Blobs unterstützt), 
+        // um den Header manuell zu setzen.
+        const token = localStorage.getItem("jwtToken");
+        
+        fetch(downloadUrl, {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
+        })
+        .then(async response => {
+            if (!response.ok) {
+                // Fehlerbehandlung (z.B. Session abgelaufen)
+                if (response.status === 401 || response.status === 403) {
+                     alert("Sitzung abgelaufen. Bitte neu anmelden.");
+                     window.location.href = "/login";
+                     return;
+                }
+                const text = await response.text();
+                throw new Error(text || "Export fehlgeschlagen");
+            }
+            
+            // Dateinamen aus dem Header extrahieren (falls vorhanden) oder generieren
+            const disposition = response.headers.get('Content-Disposition');
+            let filename = `geraete_export.${format}`; // Fallback Name
+            if (disposition && disposition.indexOf('attachment') !== -1) {
+                const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                const matches = filenameRegex.exec(disposition);
+                if (matches != null && matches[1]) { 
+                    filename = matches[1].replace(/['"]/g, '');
+                }
+            }
+
+            return response.blob().then(blob => {
+                return { blob, filename };
+            });
+        })
+        .then(({ blob, filename }) => {
+            // Virtuellen Link erstellen und klicken, um Download zu starten
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a); // Muss im DOM sein für Firefox
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url); // Speicher freigeben
+        })
+        .catch(err => {
+            console.error("Export Fehler:", err);
+            alert("Fehler beim Exportieren: " + err.message);
+        });
+
+        hideModalById("exportModal");
+      });
+    }
+    // --- EXPORT LOGIK ENDE ---
     // Button "Neues Gerät" (nur auf devices.ejs)
     const btnNew = document.getElementById("btnNewDevice");
     if (btnNew) {

@@ -1,4 +1,6 @@
 const express = require("express");
+const ExcelJS = require('exceljs');
+const PdfPrinter = require('pdfmake');
 const { db, logActivity } = require("../database");
 const router = express.Router();
 
@@ -201,6 +203,214 @@ const orderBy = sortWhitelist[sort] || "d.device_id";
       });
     }
     res.json(rows);
+  });
+});
+
+// ... (ganz unten in der Datei, vor module.exports)
+
+/**
+ * GET /api/devices/export
+ * Exportiert Geräte als XLSX oder PDF
+ */
+router.get("/export", (req, res) => {
+  const { category_id, model_id, room_id, status, sort, dir, q, format, columns } = req.query;
+
+  // 1. SQL Query Aufbau (Identisch zur GET / Route, um Konsistenz zu wahren)
+  // Wir kopieren die Logik hier rein, um sicherzustellen, dass der Export genau das Filterergebnis matcht.
+  
+  let params = [];
+  let joins = [
+    "LEFT JOIN models m ON d.model_id = m.model_id",
+    "LEFT JOIN device_categories c ON m.category_id = c.category_id",
+    "LEFT JOIN room_device_history h ON h.device_id = d.device_id AND h.to_date IS NULL",
+    "LEFT JOIN rooms r ON h.room_id = r.room_id",
+  ];
+  let wheres = [];
+
+  if (status && status !== "all_incl_decommissioned") {
+    if (status === "all") {
+      wheres.push("d.status != 'decommissioned'");
+    } else {
+      wheres.push("d.status = ?");
+      params.push(status);
+    }
+  }
+  if (category_id) { wheres.push("c.category_id = ?"); params.push(category_id); }
+  if (model_id) { wheres.push("d.model_id = ?"); params.push(model_id); }
+  if (room_id) { wheres.push("h.room_id = ?"); params.push(room_id); }
+
+  if (q) {
+    wheres.push(`(
+      d.serial_number LIKE ? OR d.inventory_number LIKE ? OR m.model_number LIKE ? OR
+      m.model_name LIKE ? OR d.hostname LIKE ? OR d.mac_address LIKE ? OR
+      d.ip_address LIKE ? OR r.room_name LIKE ? OR r.room_number LIKE ? OR d.notes LIKE ?
+    )`);
+    const s = `%${q}%`;
+    params.push(s, s, s, s, s, s, s, s, s, s);
+  }
+
+  const sortDir = dir ? (dir === "desc" ? "DESC" : "ASC") : "DESC";
+  const sortWhitelist = {
+    category_name: "c.category_name",
+    model_name: "m.model_name",
+    hostname: "d.hostname",
+    serial_number: "d.serial_number",
+    inventory_number: "d.inventory_number",
+    mac_address: "d.mac_address",
+    ip_address: "d.ip_address",
+    room_number: "r.room_number",
+    room_name: "r.room_name",
+    status: "d.status",
+    notes: "d.notes",
+  };
+  const orderBy = sortWhitelist[sort] || "d.device_id";
+
+  const sql = `
+    SELECT
+        d.*, m.model_number, m.model_name, c.category_name,
+        r.room_name, r.room_number,
+        COALESCE(d.purchase_date, m.purchase_date) as effective_purchase_date,
+        COALESCE(d.price_cents, m.price_cents) as effective_price_cents,
+        COALESCE(d.warranty_months, m.warranty_months) as effective_warranty_months
+    FROM devices d
+    ${joins.join("\n")}
+    ${wheres.length > 0 ? "WHERE " + wheres.join(" AND ") : ""}
+    ORDER BY ${orderBy} ${sortDir}
+  `;
+
+  db.all(sql, params, async (err, rows) => {
+    if (err) return res.status(500).send("DB Error: " + err.message);
+
+    // 2. Daten aufbereiten (Spalten definieren)
+    // Wenn 'columns' Parameter da ist, filtern wir. Sonst "Alle".
+    const requestedCols = columns ? columns.split(',') : null;
+
+    // Definition aller möglichen Spalten für den Export
+    const allColDefs = [
+        { key: 'device_id', header: 'ID', width: 6 },
+        { key: 'category_name', header: 'Kategorie', width: 15 },
+        { key: 'model_name', header: 'Modell', width: 20 },
+        { key: 'model_number', header: 'Modell-Nr.', width: 15 },
+        { key: 'hostname', header: 'Hostname', width: 15 },
+        { key: 'serial_number', header: 'Seriennr.', width: 15 },
+        { key: 'inventory_number', header: 'Inventarnr.', width: 15 },
+        { key: 'mac_address', header: 'MAC', width: 17 },
+        { key: 'ip_address', header: 'IP', width: 15 },
+        { key: 'room_name', header: 'Raum', width: 15,
+          formatter: (row) => (row.room_number ? `${row.room_number} ${row.room_name}` : row.room_name) 
+        },
+        { key: 'status', header: 'Status', width: 10 },
+        { key: 'effective_purchase_date', header: 'Kaufdatum', width: 12 },
+        { key: 'effective_price_cents', header: 'Preis (€)', width: 10, 
+          formatter: (row) => row.effective_price_cents ? (row.effective_price_cents / 100).toFixed(2) : '' 
+        },
+        { key: 'notes', header: 'Notizen', width: 25 },
+        { key: 'added_at', header: 'Hinzugefügt', width: 12 },
+        { key: 'last_inspected', header: 'Geprüft', width: 12 }
+    ];
+
+    // Filtere Spalten basierend auf User-Wunsch (visible vs all)
+    let exportCols = allColDefs;
+    if (requestedCols) {
+        // Mappe requestedCols (strings) auf ColDefs
+        exportCols = allColDefs.filter(def => {
+            // Spezialfall: room_name deckt 'room' ab
+            if (requestedCols.includes(def.key)) return true;
+            // Wenn Frontend 'room' schickt, nehmen wir 'room_name'
+            if (def.key === 'room_name' && requestedCols.includes('room_name')) return true; 
+            return false;
+        });
+        // Falls nichts matcht (Sicherheitsfallback), nimm alles
+        if (exportCols.length === 0) exportCols = allColDefs;
+    }
+
+    // --- Formatierung: Excel (XLSX) ---
+    if (format === 'xlsx') {
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Geräteliste');
+
+        // Header setzen
+        sheet.columns = exportCols.map(c => ({ header: c.header, key: c.key, width: c.width }));
+
+        // Zeilen hinzufügen
+        rows.forEach(row => {
+            const rowData = {};
+            exportCols.forEach(col => {
+                // Nutze Formatter wenn vorhanden, sonst Rohwert
+                rowData[col.key] = col.formatter ? col.formatter(row) : row[col.key];
+            });
+            sheet.addRow(rowData);
+        });
+
+        // Styling (optional: Header fett)
+        sheet.getRow(1).font = { bold: true };
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="geraete_export.xlsx"');
+
+        await workbook.xlsx.write(res);
+        res.end();
+    } 
+    
+    // --- Formatierung: PDF ---
+    else if (format === 'pdf') {
+        const fonts = {
+            Roboto: {
+                normal: 'Helvetica',
+                bold: 'Helvetica-Bold',
+                italics: 'Helvetica-Oblique',
+                bolditalics: 'Helvetica-BoldOblique'
+            }
+        };
+        const printer = new PdfPrinter(fonts);
+
+        // Body für PDF Tabelle bauen
+        const body = [];
+        
+        // 1. Header Row
+        const headerRow = exportCols.map(c => ({ text: c.header, style: 'tableHeader' }));
+        body.push(headerRow);
+
+        // 2. Data Rows
+        rows.forEach(row => {
+            const dataRow = exportCols.map(col => {
+                const val = col.formatter ? col.formatter(row) : row[col.key];
+                return val == null ? '' : String(val);
+            });
+            body.push(dataRow);
+        });
+
+        const docDefinition = {
+            pageOrientation: exportCols.length > 7 ? 'landscape' : 'portrait',
+            content: [
+                { text: 'Geräteliste Export', style: 'header' },
+                { text: `Erstellt am: ${new Date().toLocaleDateString()}`, margin: [0, 0, 0, 10] },
+                {
+                    table: {
+                        headerRows: 1,
+                        widths: Array(exportCols.length).fill('auto'), // oder 'star' für adaptive Breite
+                        body: body
+                    },
+                    layout: 'lightHorizontalLines'
+                }
+            ],
+            styles: {
+                header: { fontSize: 18, bold: true, margin: [0, 0, 0, 10] },
+                tableHeader: { bold: true, fontSize: 11, color: 'black', fillColor: '#eeeeee' }
+            },
+            defaultStyle: {
+                fontSize: 9
+            }
+        };
+
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="geraete_export.pdf"');
+        pdfDoc.pipe(res);
+        pdfDoc.end();
+    } else {
+        res.status(400).send("Ungültiges Format. Bitte 'xlsx' oder 'pdf' wählen.");
+    }
   });
 });
 
@@ -1384,5 +1594,9 @@ router.post("/bulk/mark-inspected", (req, res) => {
     return res.json({ ok: true, updated: this.changes, date: today });
   });
 });
+
+
+
+
 
 module.exports = router;
